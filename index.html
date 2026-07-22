@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Jungle Colouring Book</title>
+<meta name="theme-color" content="#1B4332">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+
+<!-- iPad standalone app support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jungle Colouring">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- iPad splash screens (add to home screen launch image) -->
+<link rel="apple-touch-startup-image" href="icons/icon-512.png">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== GALLERY VIEW ===== -->
+<section id="gallery-view" class="view active">
+  <header class="gallery-header">
+    <div class="leaf-decor leaf-left" aria-hidden="true">🌿</div>
+    <h1>Jungle Colouring Book</h1>
+    <div class="leaf-decor leaf-right" aria-hidden="true">🌿</div>
+  </header>
+  <p class="subtitle">Pick a page and start colouring!</p>
+  <div id="gallery-grid" class="gallery-grid"></div>
+  <p id="empty-msg" class="empty-msg" hidden>
+    No pages found yet. Drop your jungle-book PNGs into the <code>images</code> folder,
+    named <code>page-001.png</code>, <code>page-002.png</code>, and so on.
+  </p>
+</section>
+
+<!-- ===== COLOURING VIEW ===== -->
+<section id="color-view" class="view">
+  <header class="color-header">
+    <button id="back-btn" class="icon-btn" aria-label="Back to pages">&#8592;</button>
+    <span id="page-label" class="page-label">Page 1</span>
+    <button id="reset-btn" class="icon-btn" aria-label="Clear this page">&#8635;</button>
+  </header>
+
+  <div class="color-body">
+    <div class="canvas-wrap">
+      <canvas id="draw-canvas"></canvas>
+    </div>
+
+    <aside class="sidebar">
+      <div class="tool-row">
+        <button id="fill-tool" class="tool-btn active" aria-label="Fill tool">
+          <span class="tool-icon">🪣</span><span class="tool-name">Fill</span>
+        </button>
+        <button id="brush-tool" class="tool-btn" aria-label="Brush tool">
+          <span class="tool-icon">🖌️</span><span class="tool-name">Brush</span>
+        </button>
+      </div>
+
+      <div class="brush-size" id="brush-size-wrap" hidden>
+        <label for="brush-size">Brush size</label>
+        <input type="range" id="brush-size" min="4" max="50" value="16">
+      </div>
+
+      <div class="palette" id="palette"></div>
+
+      <div class="tool-row">
+        <button id="undo-btn" class="tool-btn" aria-label="Undo">
+          <span class="tool-icon">↩️</span><span class="tool-name">Undo</span>
+        </button>
+        <button id="save-btn" class="tool-btn" aria-label="Save picture">
+          <span class="tool-icon">💾</span><span class="tool-name">Save</span>
+        </button>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+:root {
+  --jungle-green: #1B4332;
+  --leaf-green: #52B788;
+  --gold: #E9C46A;
+  --coral: #F4845F;
+  --cream: #FFFDF7;
+  --ink: #2D2A26;
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", "Nunito", system-ui, sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.view {
+  display: none;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+}
+.view.active { display: flex; }
+
+/* ---------- Gallery ---------- */
+.gallery-header {
+  background: var(--jungle-green);
+  color: var(--cream);
+  padding: 18px 16px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.08);
+}
+.gallery-header h1 {
+  margin: 0;
+  font-size: clamp(24px, 3.2vw, 36px);
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+.leaf-decor { font-size: 32px; }
+
+.subtitle {
+  text-align: center;
+  margin: 14px 0 6px;
+  color: var(--jungle-green);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.gallery-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 22px;
+  padding: 14px 32px 40px;
+  -webkit-overflow-scrolling: touch;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.page-card {
+  background: #fff;
+  border: 3px solid var(--leaf-green);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.12s ease;
+  box-shadow: 0 4px 0 rgba(27,67,50,0.15);
+}
+.page-card:active { transform: scale(0.96); }
+.page-card img {
+  width: 100%;
+  aspect-ratio: 3/4;
+  object-fit: cover;
+  background: #f4f4f0;
+  display: block;
+}
+.page-card .num {
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  padding: 8px 0;
+  background: var(--gold);
+  color: var(--jungle-green);
+}
+.page-card.done .num::after {
+  content: " \2714";
+}
+
+.empty-msg {
+  text-align: center;
+  color: #8a8578;
+  padding: 40px 24px;
+  line-height: 1.6;
+}
+.empty-msg code {
+  background: #eee;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+/* ---------- Colouring view ---------- */
+.color-header {
+  background: var(--jungle-green);
+  color: var(--cream);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px calc(10px + env(safe-area-inset-top) / 3);
+  flex: 0 0 auto;
+}
+.page-label { font-weight: 800; font-size: 19px; }
+
+.icon-btn {
+  background: var(--leaf-green);
+  border: none;
+  color: white;
+  font-size: 24px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:active { background: var(--coral); }
+
+/* iPad: canvas + sidebar sit side by side so the drawing surface
+   stays large and the tools stay within thumb/pencil reach */
+.color-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #eef1ea;
+  touch-action: none;
+  position: relative;
+  padding: 20px;
+}
+#draw-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  background: white;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  touch-action: none;
+  border-radius: 6px;
+}
+
+.sidebar {
+  flex: 0 0 260px;
+  background: var(--jungle-green);
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tool-row {
+  display: flex;
+  gap: 10px;
+}
+.tool-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: white;
+  border-radius: 14px;
+  flex: 1;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.tool-btn .tool-icon { font-size: 24px; }
+.tool-btn .tool-name { font-size: 12px; font-weight: 700; }
+.tool-btn.active { background: var(--coral); }
+
+.brush-size {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.brush-size input {
+  width: 100%;
+  height: 36px;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  flex: 1;
+  align-content: start;
+}
+.swatch {
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.5);
+}
+.swatch.selected {
+  border-color: var(--gold);
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+/* Portrait iPad: give the sidebar a bit less width so the page
+   still reads full-height */
+@media (orientation: portrait) {
+  .sidebar { flex-basis: 220px; }
+  .palette { grid-template-columns: repeat(3, 1fr); }
+}
+
+.toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--jungle-green);
+  color: white;
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 14px;
+  z-index: 50;
+}
