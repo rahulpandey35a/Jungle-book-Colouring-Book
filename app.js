@@ -385,7 +385,7 @@ function renderGallery() {
   const frag = document.createDocumentFragment();
   visible.forEach(p => {
     const card = document.createElement("div");
-    card.className = "page-card";
+    card.className = "page-card cat-" + PAGE_CATEGORY[p.num];
     card.dataset.num = p.num;
     const saved = getSave(currentMode.id, p.num);
     if (saved) card.classList.add("done");

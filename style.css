@@ -81,19 +81,25 @@ html, body {
   gap: 8px;
   padding: 6px 20px;
 }
+#gallery-view {
+  background: radial-gradient(circle at 50% 0%, #FFF8E7 0%, #FDF3D9 25%, #EAF4E0 60%, #DCEEDB 100%);
+}
 .filter-chip {
   border: none;
-  background: #eef1ea;
+  background: #fff;
   color: var(--jungle-green);
   font-weight: 700;
   font-size: 13px;
   padding: 9px 16px;
   border-radius: 999px;
   white-space: nowrap;
+  box-shadow: 0 2px 0 rgba(27,67,50,0.1);
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1);
 }
 .filter-chip.active {
-  background: var(--leaf-green);
+  background: linear-gradient(135deg, var(--leaf-green), #2d9d6f);
   color: white;
+  transform: scale(1.05);
 }
 
 .gallery-grid {
@@ -110,17 +116,23 @@ html, body {
 }
 
 .page-card {
-  background: #fff;
+  background: #fffdf6;
   border: 3px solid var(--leaf-green);
   border-radius: var(--radius);
   overflow: hidden;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  transition: transform 0.12s ease;
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1);
   box-shadow: 0 4px 0 rgba(27,67,50,0.15);
 }
-.page-card:active { transform: scale(0.96); }
+.page-card:active { transform: scale(0.93) rotate(-1deg); }
+.page-card.cat-boy { border-color: #F4845F; }
+.page-card.cat-boy .num { background: #FFE4DA; color: #B3562F; }
+.page-card.cat-animals { border-color: #7FA84F; }
+.page-card.cat-animals .num { background: #E1F3E6; color: #3C4C32; }
+.page-card.cat-critters { border-color: #7EC8E3; }
+.page-card.cat-critters .num { background: #DCF1FB; color: #22405A; }
 .page-card img {
   width: 100%;
   aspect-ratio: 3/4;
@@ -197,7 +209,7 @@ html, body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #eef1ea;
+  background: linear-gradient(160deg, #F5EEDA 0%, #EAF4E0 60%, #DCEEDB 100%);
   touch-action: none;
   position: relative;
   padding: 20px;
@@ -208,7 +220,7 @@ html, body {
 
 .sidebar {
   flex: 0 0 260px;
-  background: var(--jungle-green);
+  background: linear-gradient(165deg, var(--jungle-green) 0%, #2d6a4f 60%, #245240 100%);
   padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
