@@ -79,8 +79,8 @@ const MODES = [
     thumb:"page-032.png", tools:["fill","brush","eraser"], palette:NEON_PALETTE, variant:"glow" },
   { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill",
     thumb:"page-014.png", tools:["fill","brush"], palette:PALETTE, variant:"numbered" },
-  { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Soft, blended, see-through washes of colour",
-    thumb:"page-036.png", tools:["brush","eraser"], palette:PASTEL_PALETTE.concat(PALETTE), variant:"watercolor" },
+  { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Wipe away the mist to reveal the colours underneath",
+    thumb:"page-036-colored.jpg", tools:["brush","eraser"], palette:[], variant:"watercolor" },
   { id:"doodle",    icon:"🖊️", name:"Doodle",       desc:"Free-form scribble over the picture",
     thumb:"page-021.png", tools:["brush"], palette:PALETTE, variant:"doodle" },
   { id:"pixelart",  icon:"🧩", name:"Pixel Art",    desc:"Chunky, blocky pixel-style colouring",
@@ -165,6 +165,7 @@ function canvasToSavedDataUrl(cnv) {
 // ---------- State ----------
 let currentMode = null;
 let pages = [];
+let coloredAvailable = new Set(); // page numbers that have a page-XXX-colored.jpg
 let currentPage = null;
 let ctx, canvas;
 let numberCtx, numberCanvas;
@@ -191,6 +192,9 @@ let numberRegionCount = {};  // palette number -> how many regions use it
 let numberFilledCount = {};  // palette number -> how many of those are filled
 
 let activeMask = null;        // Uint8Array w*h for containedBrush clipping
+let revealImageData = null;   // Water Color: the hidden fully-coloured picture
+let revealedMask = null;      // Water Color: which pixels have been wiped clear so far
+let revealCelebrated = false; // Water Color: only celebrate once per page-open
 
 const modeGrid = document.getElementById("mode-grid");
 const galleryGrid = document.getElementById("gallery-grid");
@@ -236,7 +240,12 @@ async function preflightPages() {
   for (let i = 1; i <= TOTAL_PAGES; i++) {
     const num = String(i).padStart(3, "0");
     const src = `page-${num}.png`;
-    checks.push(imageExists(src).then(ok => ok ? { num: i, src } : null));
+    const coloredSrc = `page-${num}-colored.jpg`;
+    checks.push(Promise.all([imageExists(src), imageExists(coloredSrc)]).then(([ok, hasColored]) => {
+      if (!ok) return null;
+      if (hasColored) coloredAvailable.add(i);
+      return { num: i, src, coloredSrc: hasColored ? coloredSrc : null };
+    }));
   }
   pages = (await Promise.all(checks)).filter(Boolean);
 }
@@ -257,7 +266,7 @@ function buildModeGrid() {
     const card = document.createElement("div");
     card.className = "mode-card" + (m.cardClass ? ` ${m.cardClass}` : "");
     card.innerHTML = `
-      ${m.thumb ? `<div class="mode-thumb"><img src="${m.thumb}" alt=""></div>` : ""}
+      ${m.thumb ? `<div class="mode-thumb" style="aspect-ratio:16/9;overflow:hidden;"><img src="${m.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></div>` : ""}
       <span class="mode-icon">${m.icon}</span>
       <div class="mode-name">${m.name}</div>
       <div class="mode-desc">${m.desc}</div>
@@ -326,6 +335,7 @@ function renderGallery() {
   const noMatchMsg = document.getElementById("no-match-msg");
 
   const visible = pages.filter(p => {
+    if (currentMode.variant === "watercolor" && !coloredAvailable.has(p.num)) return false;
     const saved = hasSave(currentMode.id, p.num);
     if (statusFilter === "started" && !saved) return false;
     if (statusFilter === "new" && saved) return false;
@@ -346,6 +356,7 @@ function renderGallery() {
     img.src = saved || p.src;
     img.loading = "lazy";
     img.alt = `Jungle page ${p.num}`;
+    img.style.cssText = "width:100%;aspect-ratio:3/4;object-fit:contain;background:#f4f4f0;display:block;";
     img.addEventListener("error", () => {
       card.classList.add("broken");
       img.replaceWith(brokenThumb());
@@ -387,6 +398,7 @@ function setupSidebarForMode() {
   document.getElementById("color-mode-label").textContent = `${currentMode.icon} ${currentMode.name}`;
 
   buildPalette();
+  document.getElementById("palette").hidden = (currentMode.variant === "watercolor");
   document.getElementById("sticker-row").hidden = !currentMode.tools.includes("sticker");
   if (currentMode.tools.includes("sticker")) buildStickerRow();
 }
@@ -491,6 +503,7 @@ function openPage(p) {
   numberMap = null; numberOf = null; numberRegionInfo = null;
   numberBuilding = false; numberBuildToken++;
   activeMask = null;
+  revealCelebrated = false;
 
   const saved = getSave(currentMode.id, p.num);
   const img = new Image();
@@ -503,6 +516,11 @@ function openPage(p) {
     numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
     ctx.drawImage(img, 0, 0);
     if (currentMode.variant === "glow" && !saved) invertToGlow();
+    if (currentMode.variant === "watercolor" && p.coloredSrc) {
+      loadRevealSource(p.src, p.coloredSrc, canvas.width, canvas.height);
+    } else {
+      revealImageData = null; revealedMask = null;
+    }
     setupSidebarForMode();
     if (currentMode.variant === "numbered") buildNumberRegions(p.src);
     pushUndo();
@@ -696,7 +714,7 @@ function buildNumberRegions(src) {
     if (myToken !== numberBuildToken) return;
 
     const fullW = probe.naturalWidth, fullH = probe.naturalHeight;
-    const scale = Math.min(1, 480 / Math.max(fullW, fullH));
+    const scale = Math.min(1, 1400 / Math.max(fullW, fullH));
     const w = Math.max(1, Math.round(fullW * scale));
     const h = Math.max(1, Math.round(fullH * scale));
 
@@ -755,7 +773,7 @@ function buildNumberRegions(src) {
 
     // Bigger minimum + a sensible cap keeps this looking like a real
     // colour-by-number sheet rather than every stray leaf getting a number.
-    const MIN_AREA = Math.max(500, Math.round(w * h * 0.009));
+    const MIN_AREA = Math.max(1400, Math.round(w * h * 0.006));
     let numbered = regions.filter(r => r.count >= MIN_AREA);
     const MAX_REGIONS = 18;
     if (numbered.length > MAX_REGIONS) {
@@ -789,10 +807,10 @@ function buildNumberRegions(src) {
     numbered.forEach(r => {
       const n = numOf[r.id];
       const { fx, fy } = info[r.id];
-      numberCtx.fillStyle = "#ffffff";
-      numberCtx.strokeStyle = PALETTE[n-1];
-      numberCtx.lineWidth = 3;
+      numberCtx.lineWidth = 4;
+      numberCtx.strokeStyle = "#2D2A26";
       numberCtx.strokeText(String(n), fx, fy);
+      numberCtx.fillStyle = PALETTE[n-1];
       numberCtx.fillText(String(n), fx, fy);
     });
 
@@ -1001,26 +1019,36 @@ function computeRegionMask(startX, startY) {
 // Paints a soft/solid dab, clipped to activeMask if one is set.
 function maskedDab(cx, cy, radius, hex, opacity) {
   const w = canvas.width, h = canvas.height;
-  const x0 = Math.max(0, Math.floor(cx-radius)), y0 = Math.max(0, Math.floor(cy-radius));
-  const x1 = Math.min(w, Math.ceil(cx+radius)), y1 = Math.min(h, Math.ceil(cy+radius));
+  const x0 = Math.max(0, Math.floor(cx-radius-1)), y0 = Math.max(0, Math.floor(cy-radius-1));
+  const x1 = Math.min(w, Math.ceil(cx+radius+1)), y1 = Math.min(h, Math.ceil(cy+radius+1));
   const bw = x1-x0, bh = y1-y0;
   if (bw <= 0 || bh <= 0) return;
   const imgData = ctx.getImageData(x0, y0, bw, bh);
   const data = imgData.data;
   const [r,g,b] = hexToRGBA(hex);
   const op = opacity == null ? 1 : opacity;
+  const solid = op >= 1;
+  // A ~1px anti-aliasing band at the edge keeps the stroke smooth at any
+  // zoom level without the whole dab looking translucent/patchy.
+  const aaBand = 1.2;
   for (let yy = 0; yy < bh; yy++) {
     for (let xx = 0; xx < bw; xx++) {
       const gx = x0+xx, gy = y0+yy;
-      const dx = gx-cx, dy = gy-cy;
-      const distSq = dx*dx+dy*dy;
-      if (distSq > radius*radius) continue;
       if (activeMask && !activeMask[gy*w+gx]) continue;
+      const dx = gx-cx, dy = gy-cy;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > radius + aaBand) continue;
+      let a;
+      if (solid) {
+        a = dist <= radius - aaBand ? 1 : Math.max(0, 1 - (dist-(radius-aaBand))/(2*aaBand));
+      } else {
+        a = op * Math.max(0, 1 - dist/radius);
+      }
+      if (a <= 0) continue;
       const i = (yy*bw+xx)*4;
-      const falloff = op * (1 - Math.sqrt(distSq)/radius*0.35); // soft edge
-      data[i]   = data[i]   + (r-data[i])   * falloff;
-      data[i+1] = data[i+1] + (g-data[i+1]) * falloff;
-      data[i+2] = data[i+2] + (b-data[i+2]) * falloff;
+      data[i]   = data[i]   + (r-data[i])   * a;
+      data[i+1] = data[i+1] + (g-data[i+1]) * a;
+      data[i+2] = data[i+2] + (b-data[i+2]) * a;
       data[i+3] = 255;
     }
   }
@@ -1029,7 +1057,7 @@ function maskedDab(cx, cy, radius, hex, opacity) {
 
 function maskedLine(from, to, radius, hex, opacity) {
   const dist = Math.hypot(to.x-from.x, to.y-from.y);
-  const step = Math.max(2, radius * 0.5);
+  const step = Math.max(1.5, radius * 0.28);
   const steps = Math.max(1, Math.ceil(dist / step));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -1037,8 +1065,151 @@ function maskedLine(from, to, radius, hex, opacity) {
   }
 }
 
+// =========================================================================
+// Water Color: wipe-to-reveal. A hidden fully-coloured picture sits behind
+// the line-art canvas; dragging the brush copies pixels from that hidden
+// picture into view (like wiping condensation off glass), and the eraser
+// paints the original line art back over the top to "re-cover" it.
+// =========================================================================
+let lineArtImageData = null;  // pristine line art, captured once per page-open
+let revealedCount = 0;
+let revealedTotal = 0;
+
+function loadRevealSource(lineSrc, coloredSrc, w, h) {
+  revealedMask = new Uint8Array(w * h);
+  revealedCount = 0;
+  revealedTotal = w * h;
+  lineArtImageData = null;
+  revealImageData = null;
+
+  const lineImg = new Image();
+  lineImg.crossOrigin = "anonymous";
+  lineImg.onload = () => {
+    const off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    const octx = off.getContext("2d");
+    octx.drawImage(lineImg, 0, 0, w, h);
+    lineArtImageData = octx.getImageData(0, 0, w, h);
+  };
+  lineImg.src = lineSrc;
+
+  const cimg = new Image();
+  cimg.crossOrigin = "anonymous";
+  cimg.onload = () => {
+    const off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    const octx = off.getContext("2d");
+    octx.drawImage(cimg, 0, 0, w, h);
+    revealImageData = octx.getImageData(0, 0, w, h);
+  };
+  cimg.src = coloredSrc;
+}
+
+function revealDab(cx, cy, radius) {
+  if (!revealImageData) return;
+  const w = canvas.width, h = canvas.height;
+  const x0 = Math.max(0, Math.floor(cx-radius-1)), y0 = Math.max(0, Math.floor(cy-radius-1));
+  const x1 = Math.min(w, Math.ceil(cx+radius+1)), y1 = Math.min(h, Math.ceil(cy+radius+1));
+  const bw = x1-x0, bh = y1-y0;
+  if (bw <= 0 || bh <= 0) return;
+  const imgData = ctx.getImageData(x0, y0, bw, bh);
+  const data = imgData.data;
+  const aaBand = 1.5;
+  for (let yy = 0; yy < bh; yy++) {
+    for (let xx = 0; xx < bw; xx++) {
+      const gx = x0+xx, gy = y0+yy;
+      const dx = gx-cx, dy = gy-cy;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > radius + aaBand) continue;
+      const a = dist <= radius - aaBand ? 1 : Math.max(0, 1 - (dist-(radius-aaBand))/(2*aaBand));
+      if (a <= 0) continue;
+      const i = (yy*bw+xx)*4;
+      const si = (gy*w+gx)*4;
+      data[i]   = data[i]   + (revealImageData.data[si]   - data[i])   * a;
+      data[i+1] = data[i+1] + (revealImageData.data[si+1] - data[i+1]) * a;
+      data[i+2] = data[i+2] + (revealImageData.data[si+2] - data[i+2]) * a;
+      data[i+3] = 255;
+      if (a > 0.6 && revealedMask && !revealedMask[gy*w+gx]) {
+        revealedMask[gy*w+gx] = 1;
+        revealedCount++;
+      }
+    }
+  }
+  ctx.putImageData(imgData, x0, y0);
+  maybeCelebrateReveal();
+}
+
+function coverDab(cx, cy, radius) {
+  if (!lineArtImageData) return;
+  const w = canvas.width, h = canvas.height;
+  const x0 = Math.max(0, Math.floor(cx-radius-1)), y0 = Math.max(0, Math.floor(cy-radius-1));
+  const x1 = Math.min(w, Math.ceil(cx+radius+1)), y1 = Math.min(h, Math.ceil(cy+radius+1));
+  const bw = x1-x0, bh = y1-y0;
+  if (bw <= 0 || bh <= 0) return;
+  const imgData = ctx.getImageData(x0, y0, bw, bh);
+  const data = imgData.data;
+  const aaBand = 1.5;
+  for (let yy = 0; yy < bh; yy++) {
+    for (let xx = 0; xx < bw; xx++) {
+      const gx = x0+xx, gy = y0+yy;
+      const dx = gx-cx, dy = gy-cy;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > radius + aaBand) continue;
+      const a = dist <= radius - aaBand ? 1 : Math.max(0, 1 - (dist-(radius-aaBand))/(2*aaBand));
+      if (a <= 0) continue;
+      const i = (yy*bw+xx)*4;
+      const si = (gy*w+gx)*4;
+      data[i]   = data[i]   + (lineArtImageData.data[si]   - data[i])   * a;
+      data[i+1] = data[i+1] + (lineArtImageData.data[si+1] - data[i+1]) * a;
+      data[i+2] = data[i+2] + (lineArtImageData.data[si+2] - data[i+2]) * a;
+      data[i+3] = 255;
+      if (a > 0.6 && revealedMask && revealedMask[gy*w+gx]) {
+        revealedMask[gy*w+gx] = 0;
+        revealedCount--;
+      }
+    }
+  }
+  ctx.putImageData(imgData, x0, y0);
+}
+
+function revealLine(from, to, radius) {
+  const dist = Math.hypot(to.x-from.x, to.y-from.y);
+  const step = Math.max(1.5, radius * 0.3);
+  const steps = Math.max(1, Math.ceil(dist / step));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    revealDab(from.x + (to.x-from.x)*t, from.y + (to.y-from.y)*t, radius);
+  }
+}
+
+function coverLine(from, to, radius) {
+  const dist = Math.hypot(to.x-from.x, to.y-from.y);
+  const step = Math.max(1.5, radius * 0.3);
+  const steps = Math.max(1, Math.ceil(dist / step));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    coverDab(from.x + (to.x-from.x)*t, from.y + (to.y-from.y)*t, radius);
+  }
+}
+
+function maybeCelebrateReveal() {
+  if (revealCelebrated || !revealedTotal) return;
+  if (revealedCount / revealedTotal > 0.85) {
+    revealCelebrated = true;
+    celebrate();
+  }
+}
+
 // ---------- Brush-family tools (unclipped — free draw / other modes) ----------
 function brushStroke(x, y) {
+  if (currentMode.variant === "watercolor" && tool === "eraser") {
+    coverDab(x, y, brushSize * 1.4);
+    return;
+  }
+  if (currentMode.variant === "watercolor" && tool === "brush") {
+    revealDab(x, y, brushSize * 1.6);
+    return;
+  }
   if (tool === "eraser") {
     ctx.fillStyle = (currentMode.variant === "glow") ? "#000000" : "#ffffff";
     ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
@@ -1082,12 +1253,16 @@ function brushStroke(x, y) {
 }
 
 function brushLine(from, to) {
-  if (currentMode.containedBrush && tool === "brush") {
-    maskedLine(from, to, brushSize/2, selectedColor, 1);
+  if (currentMode.variant === "watercolor" && tool === "brush") {
+    revealLine(from, to, brushSize * 1.6);
     return;
   }
-  if (currentMode.variant === "watercolor" && tool === "brush") {
-    maskedLine(from, to, brushSize * 1.6, selectedColor, 0.16);
+  if (currentMode.variant === "watercolor" && tool === "eraser") {
+    coverLine(from, to, brushSize * 1.4);
+    return;
+  }
+  if (currentMode.containedBrush && tool === "brush") {
+    maskedLine(from, to, brushSize/2, selectedColor, 1);
     return;
   }
   if (currentMode.variant === "pixel" && tool !== "eraser") {
@@ -1135,6 +1310,11 @@ function wireControls() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
       if (currentMode.variant === "glow") invertToGlow();
+      if (currentMode.variant === "watercolor" && revealedMask) {
+        revealedMask.fill(0);
+        revealedCount = 0;
+        revealCelebrated = false;
+      }
       pushUndo();
     };
     img.src = currentPage.src;
