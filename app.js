@@ -266,10 +266,10 @@ function buildModeGrid() {
     const card = document.createElement("div");
     card.className = "mode-card" + (m.cardClass ? ` ${m.cardClass}` : "");
     card.innerHTML = `
-      ${m.thumb ? `<div class="mode-thumb" style="aspect-ratio:16/9;overflow:hidden;"><img src="${m.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></div>` : ""}
       <span class="mode-icon">${m.icon}</span>
       <div class="mode-name">${m.name}</div>
       <div class="mode-desc">${m.desc}</div>
+      ${m.thumb ? `<div class="mode-thumb" style="aspect-ratio:16/9;overflow:hidden;flex-shrink:0;"><img src="${m.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></div>` : ""}
     `;
     card.addEventListener("click", () => selectMode(m));
     modeGrid.appendChild(card);
