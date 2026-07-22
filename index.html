@@ -57,13 +57,22 @@
 <section id="color-view" class="view">
   <header class="color-header">
     <button id="back-btn" class="icon-btn" aria-label="Back to pages">&#8592;</button>
-    <span id="page-label" class="page-label">Page 1</span>
-    <button id="reset-btn" class="icon-btn" aria-label="Clear this page">&#8635;</button>
+    <div class="color-header-mid">
+      <span id="page-label" class="page-label">Page 1</span>
+      <span id="color-mode-label" class="mode-label"></span>
+    </div>
+    <div class="color-header-actions">
+      <button id="home-btn" class="icon-btn" aria-label="Back to home">&#8962;</button>
+      <button id="reset-btn" class="icon-btn" aria-label="Clear this page">&#8635;</button>
+    </div>
   </header>
 
   <div class="color-body">
     <div class="canvas-wrap">
-      <canvas id="draw-canvas"></canvas>
+      <div class="canvas-stack">
+        <canvas id="draw-canvas"></canvas>
+        <canvas id="number-canvas"></canvas>
+      </div>
     </div>
 
     <aside class="sidebar">

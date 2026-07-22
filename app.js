@@ -3,6 +3,10 @@
 // & Friends"): Fun Paint, Color Fill, Drawing, Glow Pen, Number Paint,
 // Doodle, Pixel Art, Color Rain, Patterns. Same 40 jungle pages reused
 // across every mode (except Drawing, which is a blank free-draw canvas).
+//
+// Saves are stored in IndexedDB (not localStorage) since a single saved
+// picture can be a couple MB and localStorage's ~5MB-per-site quota on
+// iOS would fill up after just a page or two.
 // =========================================================================
 
 // ---------- Palettes ----------
@@ -46,8 +50,6 @@ const PAGE_CATEGORY = {
 };
 
 // ---------- Mode config ----------
-// tools: which buttons show in the sidebar for this mode.
-// variant: special rendering/behaviour hook (see applyVariant/handled inline).
 const MODES = [
   { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Big taps, bright colours — great for little ones",
     tools:["fill"], palette:BIG_PALETTE, variant:null },
@@ -69,11 +71,118 @@ const MODES = [
     tools:["fill","brush"], palette:PALETTE, variant:"patterns" }
 ];
 
+// =========================================================================
+// Storage: IndexedDB, with a one-time migration of any old localStorage
+// saves. `saveCache` mirrors the DB in memory (key -> dataURL string) so
+// gallery rendering stays synchronous/fast; writes go to both.
+// =========================================================================
+const DB_NAME = "jungle-coloring-db";
+const STORE = "saves";
+let dbPromise = null;
+let saveCache = new Map();
+
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+async function idbSet(key, value) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbGetAll() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const store = tx.objectStore(STORE);
+    const keysReq = store.getAllKeys();
+    const valsReq = store.getAll();
+    tx.oncomplete = () => {
+      const out = new Map();
+      keysReq.result.forEach((k, i) => out.set(k, valsReq.result[i]));
+      resolve(out);
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function initStorage() {
+  try {
+    saveCache = await idbGetAll();
+  } catch (e) {
+    saveCache = new Map();
+  }
+  // One-time migration from the old localStorage-based saves, then clear
+  // them out of localStorage to free that (tiny) quota back up.
+  try {
+    const toMigrate = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("jungle-color-")) toMigrate.push(k);
+    }
+    for (const k of toMigrate) {
+      const val = localStorage.getItem(k);
+      if (val && !saveCache.has(k)) {
+        await idbSet(k, val);
+        saveCache.set(k, val);
+      }
+      localStorage.removeItem(k);
+    }
+  } catch (e) { /* ignore — migration is best-effort */ }
+}
+
+function saveKey(mode, num) {
+  return `jungle-color-${mode}-page-${num}`;
+}
+
+function hasSave(mode, num) {
+  return saveCache.has(saveKey(mode, num));
+}
+
+function getSave(mode, num) {
+  return saveCache.get(saveKey(mode, num));
+}
+
+async function writeSave(mode, num, dataUrl) {
+  const key = saveKey(mode, num);
+  saveCache.set(key, dataUrl);
+  await idbSet(key, dataUrl);
+}
+
+// Canvas -> compressed JPEG data URL (much smaller than PNG for painted
+// pictures, and IndexedDB has plenty of room compared to localStorage).
+function canvasToSavedDataUrl(cnv) {
+  return cnv.toDataURL("image/jpeg", 0.85);
+}
+
 // ---------- State ----------
 let currentMode = null;
 let pages = [];
 let currentPage = null;
 let ctx, canvas;
+let numberCtx, numberCanvas;
 let tool = "fill";
 let selectedColor = PALETTE[0];
 let selectedPattern = PATTERN_TYPES[0].id;
@@ -85,9 +194,11 @@ let drawing = false;
 let lastPt = null;
 let statusFilter = "all";
 let categoryFilter = "all";
-let numberMap = null;   // Uint16Array w*h -> region id (0 = none/outline)
-let numberOf = null;    // regionId -> palette number (1-based)
+let numberMap = null;     // Uint16Array (scaled-down) -> region id
+let numberOf = null;      // regionId -> palette number (1-based)
+let numberScale = 1;      // full-res coord / numberScale = numberMap coord
 let numberBuilding = false;
+let numberBuildToken = 0; // guards against a stale async scan finishing late
 
 const modeGrid = document.getElementById("mode-grid");
 const galleryGrid = document.getElementById("gallery-grid");
@@ -103,6 +214,7 @@ const toast = document.getElementById("toast");
 init();
 
 async function init() {
+  await initStorage();
   await preflightPages();
   buildModeGrid();
   wireControls();
@@ -128,10 +240,6 @@ function imageExists(src) {
   });
 }
 
-function saveKey(mode, num) {
-  return `jungle-color-${mode}-page-${num}`;
-}
-
 // ---------- Mode dashboard ----------
 function buildModeGrid() {
   modeGrid.innerHTML = "";
@@ -151,7 +259,6 @@ function buildModeGrid() {
 function selectMode(mode) {
   currentMode = mode;
   if (mode.variant === "blank") {
-    // Drawing mode skips the page gallery — straight to a blank canvas.
     openBlankCanvas();
     return;
   }
@@ -211,9 +318,9 @@ function renderGallery() {
   const noMatchMsg = document.getElementById("no-match-msg");
 
   const visible = pages.filter(p => {
-    const hasSave = !!localStorage.getItem(saveKey(currentMode.id, p.num));
-    if (statusFilter === "started" && !hasSave) return false;
-    if (statusFilter === "new" && hasSave) return false;
+    const saved = hasSave(currentMode.id, p.num);
+    if (statusFilter === "started" && !saved) return false;
+    if (statusFilter === "new" && saved) return false;
     if (categoryFilter !== "all" && PAGE_CATEGORY[p.num] !== categoryFilter) return false;
     return true;
   });
@@ -224,13 +331,17 @@ function renderGallery() {
     const card = document.createElement("div");
     card.className = "page-card";
     card.dataset.num = p.num;
-    const saved = localStorage.getItem(saveKey(currentMode.id, p.num));
+    const saved = getSave(currentMode.id, p.num);
     if (saved) card.classList.add("done");
 
     const img = document.createElement("img");
     img.src = saved || p.src;
     img.loading = "lazy";
     img.alt = `Jungle page ${p.num}`;
+    img.addEventListener("error", () => {
+      card.classList.add("broken");
+      img.replaceWith(brokenThumb());
+    });
 
     const label = document.createElement("div");
     label.className = "num";
@@ -244,6 +355,13 @@ function renderGallery() {
   galleryGrid.appendChild(frag);
 }
 
+function brokenThumb() {
+  const div = document.createElement("div");
+  div.className = "broken-thumb";
+  div.textContent = "🖼️";
+  return div;
+}
+
 // ---------- Colouring view setup ----------
 function setupSidebarForMode() {
   const allTools = ["fill","brush","eraser","crayon","glitter","sticker"];
@@ -251,11 +369,11 @@ function setupSidebarForMode() {
     const btn = document.getElementById(`${t}-tool`);
     btn.hidden = !currentMode.tools.includes(t);
   });
-  const firstTool = currentMode.tools[0];
-  setTool(firstTool);
+  setTool(currentMode.tools[0]);
 
   document.getElementById("color-view").className =
     "view active" + (currentMode.variant === "glow" ? " color-view-glow" : "");
+  document.getElementById("color-mode-label").textContent = `${currentMode.icon} ${currentMode.name}`;
 
   buildPalette();
   document.getElementById("sticker-row").hidden = !currentMode.tools.includes("sticker");
@@ -268,13 +386,6 @@ function setTool(t) {
   const btn = document.getElementById(`${t}-tool`);
   if (btn) btn.classList.add("active");
   document.getElementById("brush-size-wrap").hidden = (t === "fill" || t === "sticker");
-}
-
-function selectColorSwatch(index) {
-  const swatches = document.querySelectorAll("#palette .swatch");
-  swatches.forEach(s => s.classList.remove("selected"));
-  if (swatches[index]) swatches[index].classList.add("selected");
-  selectedColor = PALETTE[index];
 }
 
 function buildPalette() {
@@ -294,9 +405,7 @@ function buildPalette() {
       });
       palette.appendChild(sw);
     });
-    // still need a base colour for the pattern's ink
-    const list = currentMode.palette;
-    list.forEach((hex, i) => {
+    currentMode.palette.forEach((hex, i) => {
       const sw = document.createElement("button");
       sw.className = "swatch" + (i === 0 ? " selected-color" : "");
       sw.style.background = hex;
@@ -307,12 +416,11 @@ function buildPalette() {
       });
       palette.appendChild(sw);
     });
-    selectedColor = list[0];
+    selectedColor = currentMode.palette[0];
     return;
   }
 
-  const list = currentMode.palette;
-  list.forEach((hex, i) => {
+  currentMode.palette.forEach((hex, i) => {
     const sw = document.createElement("button");
     sw.className = "swatch" + (i === 0 ? " selected" : "");
     sw.style.background = hex;
@@ -330,7 +438,14 @@ function buildPalette() {
     });
     palette.appendChild(sw);
   });
-  selectedColor = list[0];
+  selectedColor = currentMode.palette[0];
+}
+
+function selectColorSwatch(index) {
+  const swatches = document.querySelectorAll("#palette .swatch");
+  swatches.forEach(s => s.classList.remove("selected"));
+  if (swatches[index]) swatches[index].classList.add("selected");
+  selectedColor = PALETTE[index];
 }
 
 function buildStickerRow() {
@@ -358,23 +473,31 @@ function openPage(p) {
 
   canvas = document.getElementById("draw-canvas");
   ctx = canvas.getContext("2d", { willReadFrequently: true });
+  numberCanvas = document.getElementById("number-canvas");
+  numberCtx = numberCanvas.getContext("2d");
   undoStack = [];
   redoStack = [];
   numberMap = null;
   numberOf = null;
   numberBuilding = false;
+  numberBuildToken++;
 
-  const key = saveKey(currentMode.id, p.num);
-  const saved = localStorage.getItem(key);
+  const saved = getSave(currentMode.id, p.num);
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
+    numberCanvas.width = img.naturalWidth;
+    numberCanvas.height = img.naturalHeight;
+    numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
     ctx.drawImage(img, 0, 0);
     if (currentMode.variant === "glow" && !saved) invertToGlow();
     setupSidebarForMode();
-    if (currentMode.variant === "numbered" && !saved) buildNumberRegions();
+    // Number regions are always derived from the pristine source artwork
+    // (not the save), so tap-to-match colouring keeps working even after
+    // you've saved, closed, and reopened a page.
+    if (currentMode.variant === "numbered") buildNumberRegions(p.src);
     pushUndo();
   };
   img.src = saved || p.src;
@@ -387,15 +510,31 @@ function openBlankCanvas() {
 
   canvas = document.getElementById("draw-canvas");
   ctx = canvas.getContext("2d", { willReadFrequently: true });
+  numberCanvas = document.getElementById("number-canvas");
+  numberCtx = numberCanvas.getContext("2d");
   undoStack = [];
   redoStack = [];
+  numberMap = null;
+  numberOf = null;
+
+  const saved = getSave("drawing", "freeform");
+  const finish = () => { setupSidebarForMode(); pushUndo(); };
+
   canvas.width = 1000;
   canvas.height = 1300;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  numberCanvas.width = 1000;
+  numberCanvas.height = 1300;
+  numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
 
-  setupSidebarForMode();
-  pushUndo();
+  if (saved) {
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0); finish(); };
+    img.src = saved;
+  } else {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    finish();
+  }
 }
 
 // Turn the white background + black line art into a black background with
@@ -420,6 +559,13 @@ function closePage() {
     galleryView.classList.add("active");
     renderGallery();
   }
+}
+
+function goHome() {
+  colorView.classList.remove("active");
+  galleryView.classList.remove("active");
+  colorView.className = "view";
+  modeView.classList.add("active");
 }
 
 // ---------- Undo / redo ----------
@@ -527,36 +673,49 @@ function drawHeart(ctx2, cx, cy, r) {
   ctx2.closePath();
 }
 
-// ---------- Number Paint: real region labelling ----------
-// Scans the whole page once, finds every enclosed light region (the same
-// way floodFill finds one), gives each a palette number, and stamps that
-// number on the picture. Tapping a numbered region then fills it with
-// that number's colour automatically.
-function buildNumberRegions() {
+// =========================================================================
+// Number Paint: region labelling
+// Always computed from the pristine source image (never the save, and
+// never the on-screen canvas), so it works the same whether this is the
+// first time you've opened the page or the twentieth. Runs on a
+// downscaled copy for speed, then numbers are drawn on a transparent
+// overlay canvas so the painted artwork itself is never touched.
+// =========================================================================
+function buildNumberRegions(src) {
+  const myToken = ++numberBuildToken;
   numberBuilding = true;
   showToast("Preparing numbers\u2026");
 
-  // Let the toast paint before the (synchronous, sometimes slow-ish) scan.
-  setTimeout(() => {
-    const w = canvas.width, h = canvas.height;
-    const imgData = ctx.getImageData(0, 0, w, h);
+  const probe = new Image();
+  probe.onload = () => {
+    if (myToken !== numberBuildToken) return; // a newer page opened meanwhile
+
+    const fullW = probe.naturalWidth, fullH = probe.naturalHeight;
+    const scale = Math.min(1, 480 / Math.max(fullW, fullH));
+    const w = Math.max(1, Math.round(fullW * scale));
+    const h = Math.max(1, Math.round(fullH * scale));
+
+    const off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    const octx = off.getContext("2d", { willReadFrequently: true });
+    octx.drawImage(probe, 0, 0, w, h);
+    const imgData = octx.getImageData(0, 0, w, h);
     const data = imgData.data;
     const idx = (x, y) => (y * w + x) * 4;
     const isBarrier = (x, y) => {
       const i = idx(x, y);
-      return (data[i] + data[i+1] + data[i+2]) / 3 < 60;
+      return (data[i] + data[i+1] + data[i+2]) / 3 < 90; // slightly looser at low-res
     };
 
-    numberMap = new Uint16Array(w * h);
-    const regions = []; // {id, count, sumX, sumY}
+    const map = new Uint16Array(w * h);
+    const regions = [];
     let nextId = 1;
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const p = y * w + x;
-        if (numberMap[p] !== 0 || isBarrier(x, y)) continue;
+        if (map[p] !== 0 || isBarrier(x, y)) continue;
 
-        // scanline flood fill to label this whole region
         const id = nextId++;
         let count = 0, sumX = 0, sumY = 0;
         const stack = [[x, y]];
@@ -564,26 +723,26 @@ function buildNumberRegions() {
           let [cx, cy] = stack.pop();
           if (cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
           const cp = cy * w + cx;
-          if (numberMap[cp] !== 0 || isBarrier(cx, cy)) continue;
+          if (map[cp] !== 0 || isBarrier(cx, cy)) continue;
 
           let xl = cx;
-          while (xl >= 0 && numberMap[cy*w+xl] === 0 && !isBarrier(xl, cy)) xl--;
+          while (xl >= 0 && map[cy*w+xl] === 0 && !isBarrier(xl, cy)) xl--;
           xl++;
           let xr = cx;
-          while (xr < w && numberMap[cy*w+xr] === 0 && !isBarrier(xr, cy)) xr++;
+          while (xr < w && map[cy*w+xr] === 0 && !isBarrier(xr, cy)) xr++;
           xr--;
 
           let spanAbove = false, spanBelow = false;
           for (let xi = xl; xi <= xr; xi++) {
-            numberMap[cy*w+xi] = id;
+            map[cy*w+xi] = id;
             count++; sumX += xi; sumY += cy;
             if (cy > 0) {
-              const above = numberMap[(cy-1)*w+xi] === 0 && !isBarrier(xi, cy-1);
+              const above = map[(cy-1)*w+xi] === 0 && !isBarrier(xi, cy-1);
               if (above && !spanAbove) { stack.push([xi, cy-1]); spanAbove = true; }
               else if (!above) spanAbove = false;
             }
             if (cy < h-1) {
-              const below = numberMap[(cy+1)*w+xi] === 0 && !isBarrier(xi, cy+1);
+              const below = map[(cy+1)*w+xi] === 0 && !isBarrier(xi, cy+1);
               if (below && !spanBelow) { stack.push([xi, cy+1]); spanBelow = true; }
               else if (!below) spanBelow = false;
             }
@@ -593,36 +752,43 @@ function buildNumberRegions() {
       }
     }
 
-    // Assign palette numbers only to regions big enough to matter; sort
-    // top-to-bottom, left-to-right so numbering reads naturally.
-    const MIN_AREA = Math.max(1400, Math.round(w * h * 0.006));
+    const MIN_AREA = Math.max(300, Math.round(w * h * 0.006));
     const numbered = regions.filter(r => r.count >= MIN_AREA)
       .sort((a, b) => (a.cy - b.cy) || (a.cx - b.cx));
 
-    numberOf = {};
-    numbered.forEach((r, i) => { numberOf[r.id] = (i % PALETTE.length) + 1; });
+    const numOf = {};
+    numbered.forEach((r, i) => { numOf[r.id] = (i % PALETTE.length) + 1; });
 
-    // Draw the number labels on top of the artwork.
-    const fontSize = Math.max(16, Math.round(Math.min(w, h) * 0.03));
-    ctx.font = `800 ${fontSize}px ui-rounded, system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    if (myToken !== numberBuildToken) return;
+    numberMap = map;
+    numberOf = numOf;
+    numberScale = scale;
+
+    // Draw labels on the transparent overlay canvas (full resolution),
+    // scaling region centroids back up from the analysis resolution.
+    const fontSize = Math.max(18, Math.round(Math.min(fullW, fullH) * 0.032));
+    numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+    numberCtx.font = `800 ${fontSize}px ui-rounded, system-ui, sans-serif`;
+    numberCtx.textAlign = "center";
+    numberCtx.textBaseline = "middle";
     numbered.forEach(r => {
-      const n = numberOf[r.id];
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = PALETTE[n-1];
-      ctx.lineWidth = 3;
-      ctx.strokeText(String(n), r.cx, r.cy);
-      ctx.fillText(String(n), r.cx, r.cy);
+      const n = numOf[r.id];
+      const fx = r.cx / scale, fy = r.cy / scale;
+      numberCtx.fillStyle = "#ffffff";
+      numberCtx.strokeStyle = PALETTE[n-1];
+      numberCtx.lineWidth = 3;
+      numberCtx.strokeText(String(n), fx, fy);
+      numberCtx.fillText(String(n), fx, fy);
     });
 
     numberBuilding = false;
-    pushUndo();
     showToast("Ready! Tap a number \u2728");
-  }, 30);
+  };
+  probe.crossOrigin = "anonymous";
+  probe.src = src;
 }
 
-
+// ---------- Flood fill ----------
 // sampler(x,y) -> [r,g,b,a]; used for solid colour or a pattern tile lookup.
 function floodFill(startX, startY, sampler, animate) {
   const w = canvas.width, h = canvas.height;
@@ -638,7 +804,6 @@ function floodFill(startX, startY, sampler, animate) {
 
   const brightness = (startR + startG + startB) / 3;
   const isGlow = currentMode && currentMode.variant === "glow";
-  // On glow (inverted) pages the "outline barrier" is bright, not dark.
   const isBarrier = isGlow ? (v => v > 200) : (v => v < 60);
   if (isBarrier(brightness)) return;
 
@@ -654,7 +819,6 @@ function floodFill(startX, startY, sampler, animate) {
 
   const stack = [[startX, startY]];
   const visited = new Uint8Array(w * h);
-  const filledRows = []; // for the Color Rain animation
 
   while (stack.length) {
     let [x, y] = stack.pop();
@@ -688,14 +852,10 @@ function floodFill(startX, startY, sampler, animate) {
     }
   }
 
-  if (animate) {
-    animateRainReveal(imgData, visited, w, h);
-  } else {
-    ctx.putImageData(imgData, 0, 0);
-  }
+  if (animate) animateRainReveal(imgData, visited, w, h);
+  else ctx.putImageData(imgData, 0, 0);
 }
 
-// Color Rain: reveal the newly-filled pixels top row to bottom row.
 function animateRainReveal(finalImgData, visited, w, h) {
   const before = ctx.getImageData(0, 0, w, h);
   const totalSteps = 24;
@@ -778,14 +938,13 @@ function brushStroke(x, y) {
     ctx.fillRect(gx, gy, cell, cell);
     return;
   }
-  // default: brush / doodle
   ctx.fillStyle = selectedColor;
   ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
 }
 
 function brushLine(from, to) {
   if (currentMode.variant === "pixel" && tool !== "eraser") {
-    brushStroke(to.x, to.y); // blocky stamps rather than a smooth line
+    brushStroke(to.x, to.y);
     return;
   }
   if (tool === "glitter" || tool === "crayon") {
@@ -814,6 +973,7 @@ function wireControls() {
     modeView.classList.add("active");
   });
   document.getElementById("back-btn").addEventListener("click", closePage);
+  document.getElementById("home-btn").addEventListener("click", goHome);
 
   document.getElementById("reset-btn").addEventListener("click", () => {
     if (!currentPage) return;
@@ -845,15 +1005,18 @@ function wireControls() {
   document.getElementById("undo-btn").addEventListener("click", undo);
   document.getElementById("redo-btn").addEventListener("click", redo);
 
-  document.getElementById("save-btn").addEventListener("click", () => {
+  document.getElementById("save-btn").addEventListener("click", async () => {
     if (!currentPage) return;
     try {
-      if (currentMode.variant !== "blank") {
-        localStorage.setItem(saveKey(currentMode.id, currentPage.num), canvas.toDataURL());
+      const dataUrl = canvasToSavedDataUrl(canvas);
+      if (currentMode.variant === "blank") {
+        await writeSave("drawing", "freeform", dataUrl);
+      } else {
+        await writeSave(currentMode.id, currentPage.num, dataUrl);
       }
       celebrate();
     } catch (e) {
-      showToast("Couldn't save \u2014 storage full");
+      showToast("Couldn't save \u2014 please try again");
     }
   });
 
@@ -881,7 +1044,10 @@ function onPointerDown(e) {
   if (tool === "fill") {
     let fillColor = selectedColor;
     if (currentMode.variant === "numbered" && numberMap && !numberBuilding) {
-      const id = numberMap[pt.y * canvas.width + pt.x];
+      const mx = Math.min(numberCanvas.width - 1, Math.floor(pt.x * numberScale));
+      const my = Math.min(numberCanvas.height - 1, Math.floor(pt.y * numberScale));
+      const mapW = Math.round(canvas.width * numberScale);
+      const id = numberMap[my * mapW + mx];
       const n = id && numberOf[id];
       if (n) {
         fillColor = PALETTE[n - 1];

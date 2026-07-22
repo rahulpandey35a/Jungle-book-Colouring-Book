@@ -6,14 +6,14 @@ finger, Apple Pencil, and mouse input.
 
 ## 1. Pages
 
-This build ships with all 40 jungle-book pages already in the `images`
-folder, named in order:
+This build ships with all 40 jungle-book pages already in the repo root,
+named in order:
 
 ```
-images/page-001.png
-images/page-002.png
+page-001.png
+page-002.png
 ...
-images/page-040.png
+page-040.png
 ```
 
 `TOTAL_PAGES` in `app.js` is set to `40` to match. If you ever add or
