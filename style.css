@@ -10,6 +10,14 @@
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute must always win over any display rule below —
+   without this, any selector here that sets display: on an element also
+   toggled via the hidden attribute (buttons, panels, overlays) can defeat
+   hidden through equal-specificity cascade rules, leaving it visible. */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -537,3 +545,12 @@ html, body {
 .leave-btn-save { background: var(--leaf-green); color: white; }
 .leave-btn-discard { background: #eee; color: #6b6a63; }
 .leave-btn-cancel { background: none; color: var(--jungle-green); text-decoration: underline; font-weight: 700; }
+
+/* Author rules that set `display` on an element must not defeat the
+   browser's built-in `hidden` attribute — without this, a class rule of
+   equal specificity to `[hidden]` can win the cascade (author > user-agent
+   origin), leaving the element visible even while `hidden` is set. */
+.celebration[hidden],
+.leave-confirm[hidden] {
+  display: none !important;
+}
