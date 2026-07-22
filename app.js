@@ -16,14 +16,20 @@
 // =========================================================================
 
 // ---------- Palettes ----------
+// Derived from the actual colours used across the reference illustrations
+// (k-means colour extraction over all 38 coloured pages), rounded out with
+// the vivid hibiscus/orchid/toucan accent tones that appear throughout.
 const PALETTE = [
-  "#E63946", "#F4845F", "#F4A261", "#E9C46A", "#FFD166",
-  "#8AC926", "#52B788", "#2A9D8F", "#457B9D", "#4361EE",
-  "#7209B7", "#B5179E", "#F72585", "#FFFFFF", "#6B4226", "#2D2A26"
+  "#E63946", "#F4845F", "#F4A261", "#F4B942", "#F2C14E",
+  "#A374C9", "#F28DA8", "#7EC8E3", "#4A9B9B", "#6B7C4C",
+  "#4B5A3B", "#3C4C32", "#8C6038", "#DBAB74", "#A9A085",
+  "#D9D4AC", "#83ABA7", "#5F8C91", "#324D51", "#8B5E3C",
+  "#FFFFFF", "#2D2A26"
 ];
 const BIG_PALETTE = [
-  "#E63946", "#F4845F", "#FFD166", "#8AC926", "#52B788",
-  "#4361EE", "#7209B7", "#F72585", "#2D2A26", "#FFFFFF", "#E9C46A", "#457B9D"
+  "#E63946", "#F4845F", "#F4B942", "#6B7C4C", "#4A9B9B",
+  "#7EC8E3", "#A374C9", "#F28DA8", "#8C6038", "#FFFFFF",
+  "#2D2A26", "#DBAB74"
 ];
 const NEON_PALETTE = [
   "#FF2E63", "#FF6B00", "#FFF200", "#39FF14", "#00F5D4",
@@ -192,6 +198,8 @@ let numberRegionCount = {};  // palette number -> how many regions use it
 let numberFilledCount = {};  // palette number -> how many of those are filled
 
 let activeMask = null;        // Uint8Array w*h for containedBrush clipping
+let hasUnsavedChanges = false;
+let pendingLeaveAction = null;
 let revealImageData = null;   // Water Color: the hidden fully-coloured picture
 let revealedMask = null;      // Water Color: which pixels have been wiped clear so far
 let revealCelebrated = false; // Water Color: only celebrate once per page-open
@@ -269,7 +277,6 @@ function buildModeGrid() {
       <span class="mode-icon">${m.icon}</span>
       <div class="mode-name">${m.name}</div>
       <div class="mode-desc">${m.desc}</div>
-      ${m.thumb ? `<div class="mode-thumb" style="aspect-ratio:16/9;overflow:hidden;flex-shrink:0;"><img src="${m.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></div>` : ""}
     `;
     card.addEventListener("click", () => selectMode(m));
     modeGrid.appendChild(card);
@@ -277,6 +284,7 @@ function buildModeGrid() {
 }
 
 function selectMode(mode) {
+  cancelCelebration();
   currentMode = mode;
   if (mode.variant === "blank") { openBlankCanvas(); return; }
   if (pages.length === 0) {
@@ -316,14 +324,17 @@ function buildFilterChipsOnce() {
     statusRow.appendChild(chip);
   });
 
-  [{ id: "all", label: "🌴 All Categories" }, ...CATEGORIES].forEach(c => {
+  // No "All Categories" chip — tapping the already-active category
+  // deselects it (back to unfiltered) instead.
+  CATEGORIES.forEach(c => {
     const chip = document.createElement("button");
-    chip.className = "filter-chip" + (c.id === categoryFilter ? " active" : "");
+    chip.className = "filter-chip";
     chip.textContent = c.label;
     chip.addEventListener("click", () => {
-      categoryFilter = c.id;
+      const alreadyActive = categoryFilter === c.id;
+      categoryFilter = alreadyActive ? "all" : c.id;
       categoryRow.querySelectorAll(".filter-chip").forEach(el => el.classList.remove("active"));
-      chip.classList.add("active");
+      if (!alreadyActive) chip.classList.add("active");
       renderGallery();
     });
     categoryRow.appendChild(chip);
@@ -524,6 +535,7 @@ function openPage(p) {
     setupSidebarForMode();
     if (currentMode.variant === "numbered") buildNumberRegions(p.src);
     pushUndo();
+    hasUnsavedChanges = false;
   };
   img.src = saved || p.src;
 }
@@ -541,7 +553,7 @@ function openBlankCanvas() {
   numberMap = null; numberOf = null; activeMask = null;
 
   const saved = getSave("drawing", "freeform");
-  const finish = () => { setupSidebarForMode(); pushUndo(); };
+  const finish = () => { setupSidebarForMode(); pushUndo(); hasUnsavedChanges = false; };
 
   canvas.width = 1000; canvas.height = 1300;
   numberCanvas.width = 1000; numberCanvas.height = 1300;
@@ -568,6 +580,7 @@ function invertToGlow() {
 }
 
 function closePage() {
+  cancelCelebration();
   colorView.classList.remove("active");
   colorView.className = "view";
   if (currentMode && currentMode.variant === "blank") {
@@ -579,6 +592,7 @@ function closePage() {
 }
 
 function goHome() {
+  cancelCelebration();
   colorView.classList.remove("active");
   galleryView.classList.remove("active");
   colorView.className = "view";
@@ -591,6 +605,7 @@ function pushUndo() {
     undoStack.push(canvas.toDataURL());
     if (undoStack.length > 15) undoStack.shift();
     redoStack = [];
+    hasUnsavedChanges = true;
   } catch (e) { /* ignore */ }
 }
 function restoreFromDataUrl(dataUrl) {
@@ -1194,7 +1209,7 @@ function coverLine(from, to, radius) {
 
 function maybeCelebrateReveal() {
   if (revealCelebrated || !revealedTotal) return;
-  if (revealedCount / revealedTotal > 0.85) {
+  if (revealedCount / revealedTotal > 0.98) {
     revealCelebrated = true;
     celebrate();
   }
@@ -1290,11 +1305,12 @@ function placeSticker(x, y) {
 // ---------- Controls wiring ----------
 function wireControls() {
   document.getElementById("gallery-back-btn").addEventListener("click", () => {
+    cancelCelebration();
     galleryView.classList.remove("active");
     modeView.classList.add("active");
   });
-  document.getElementById("back-btn").addEventListener("click", closePage);
-  document.getElementById("home-btn").addEventListener("click", goHome);
+  document.getElementById("back-btn").addEventListener("click", () => requestLeave(closePage));
+  document.getElementById("home-btn").addEventListener("click", () => requestLeave(goHome));
 
   document.getElementById("reset-btn").addEventListener("click", () => {
     if (!currentPage) return;
@@ -1331,19 +1347,53 @@ function wireControls() {
   document.getElementById("undo-btn").addEventListener("click", undo);
   document.getElementById("redo-btn").addEventListener("click", redo);
 
-  document.getElementById("save-btn").addEventListener("click", async () => {
-    if (!currentPage) return;
-    try {
-      const dataUrl = canvasToSavedDataUrl(canvas);
-      if (currentMode.variant === "blank") await writeSave("drawing", "freeform", dataUrl);
-      else await writeSave(currentMode.id, currentPage.num, dataUrl);
-      celebrate();
-    } catch (e) {
-      showToast("Couldn't save \u2014 please try again");
-    }
-  });
+  document.getElementById("save-btn").addEventListener("click", () => doSave(true));
 
+  wireLeaveConfirm();
   wirePointerEventsGlobally();
+}
+
+// showCelebration: the Save button always celebrates; saving via the
+// leave-confirmation dialog skips the confetti since you're on your way out.
+async function doSave(showCelebration) {
+  if (!currentPage) return false;
+  try {
+    const dataUrl = canvasToSavedDataUrl(canvas);
+    if (currentMode.variant === "blank") await writeSave("drawing", "freeform", dataUrl);
+    else await writeSave(currentMode.id, currentPage.num, dataUrl);
+    hasUnsavedChanges = false;
+    if (showCelebration) celebrate();
+    return true;
+  } catch (e) {
+    showToast("Couldn't save \u2014 please try again");
+    return false;
+  }
+}
+
+// Guards navigation away from the colouring screen: if there's unsaved
+// work, ask first instead of silently discarding it.
+function requestLeave(afterLeaveFn) {
+  if (!hasUnsavedChanges) { afterLeaveFn(); return; }
+  pendingLeaveAction = afterLeaveFn;
+  document.getElementById("leave-confirm").hidden = false;
+}
+
+function wireLeaveConfirm() {
+  document.getElementById("leave-save-btn").addEventListener("click", async () => {
+    document.getElementById("leave-confirm").hidden = true;
+    await doSave(false);
+    if (pendingLeaveAction) pendingLeaveAction();
+    pendingLeaveAction = null;
+  });
+  document.getElementById("leave-discard-btn").addEventListener("click", () => {
+    document.getElementById("leave-confirm").hidden = true;
+    if (pendingLeaveAction) pendingLeaveAction();
+    pendingLeaveAction = null;
+  });
+  document.getElementById("leave-cancel-btn").addEventListener("click", () => {
+    document.getElementById("leave-confirm").hidden = true;
+    pendingLeaveAction = null;
+  });
 }
 
 function wirePointerEventsGlobally() {
@@ -1439,11 +1489,14 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, 1600);
 }
+let celebrationHideTimer = null;
+let confettiTimers = [];
 function celebrate() {
   const el = document.getElementById("celebration");
   el.hidden = false;
   spawnConfetti();
-  setTimeout(() => { el.hidden = true; }, 1500);
+  clearTimeout(celebrationHideTimer);
+  celebrationHideTimer = setTimeout(() => { el.hidden = true; }, 1500);
 }
 function spawnConfetti() {
   const emojis = ["🎉","✨","🌟","🎊","💚"];
@@ -1455,8 +1508,17 @@ function spawnConfetti() {
     piece.style.animationDuration = (1 + Math.random()*0.8) + "s";
     piece.style.animationDelay = (Math.random()*0.2) + "s";
     document.body.appendChild(piece);
-    setTimeout(() => piece.remove(), 2200);
+    confettiTimers.push(setTimeout(() => piece.remove(), 2200));
   }
+}
+// Called whenever we navigate away, so a still-animating celebration from
+// the page you just left can never bleed into the next screen.
+function cancelCelebration() {
+  clearTimeout(celebrationHideTimer);
+  document.getElementById("celebration").hidden = true;
+  confettiTimers.forEach(clearTimeout);
+  confettiTimers = [];
+  document.querySelectorAll(".confetti-piece").forEach(p => p.remove());
 }
 
 // ---------- PWA ----------
