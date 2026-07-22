@@ -39,7 +39,7 @@ async function buildGallery() {
   const checks = [];
   for (let i = 1; i <= TOTAL_PAGES; i++) {
     const num = String(i).padStart(3, "0");
-    const src = `images/page-${num}.png`;
+    const src = `page-${num}.png`;
     checks.push(imageExists(src).then(ok => ok ? { num: i, src } : null));
   }
   const results = await Promise.all(checks);
