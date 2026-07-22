@@ -89,22 +89,22 @@ const PAGE_CATEGORY = {
 // the finger — you must move over the whole area to fill it (vs. Fill,
 // which is instant on tap).
 const MODES = [
-  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — the full colour palette",
+  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — the full colour palette", cardClass:"card-yellow",
     thumb:"page-020.png", tools:["fill"], palette:PALETTE, variant:null },
-  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"6 pencils — crayon, marker, pastel, chalk, glitter & rainbow",
+  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"6 pencils — crayon, marker, pastel, chalk, glitter & rainbow", cardClass:"card-coral",
     thumb:"page-028.png", tools:["brush","eraser","crayon","marker","pastel","chalk","glitter","rainbow","sticker"],
     palette:PALETTE, variant:null, containedBrush:true },
-  { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page — the full pencil box",
+  { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page — the full pencil box", cardClass:"card-sky",
     thumb:null, tools:["brush","eraser","fill","crayon","marker","pastel","chalk","glitter","rainbow","motif"], palette:PALETTE, variant:"blank" },
   { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Neon colours, crayon & glitter on a dark background", cardClass:"glow",
     thumb:"page-032.png", tools:["fill","brush","eraser","crayon","marker","glitter","rainbow"], palette:NEON_PALETTE, variant:"glow" },
-  { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill",
+  { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill", cardClass:"card-mint",
     thumb:"page-014.png", tools:["fill"], palette:PALETTE, variant:"numbered" },
-  { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Wipe away the mist to reveal the colours underneath",
+  { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Wipe away the mist to reveal the colours underneath", cardClass:"card-aqua",
     thumb:"page-036-colored.jpg", tools:["brush","eraser"], palette:[], variant:"watercolor" },
-  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Pop a falling colour bubble to fill where it lands",
+  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Pop a falling colour bubble to fill where it lands", cardClass:"card-lavender",
     thumb:"page-034.png", tools:["fill"], palette:PALETTE, variant:"rain" },
-  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more, or draw rainbow & bug trails", cardClass:"funpaint",
+  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more, or draw rainbow & bug trails", cardClass:"card-pink",
     thumb:"page-006.png", tools:["fill","brush","rainbow","motif"], palette:PALETTE, variant:"patterns" }
 ];
 
@@ -1127,8 +1127,8 @@ function floodFill(startX, startY, sampler, animate) {
 // Slowed + staggered so the "pouring" effect actually reads as rain.
 function animateRainReveal(finalImgData, visited, w, h) {
   const before = ctx.getImageData(0, 0, w, h);
-  const totalSteps = 36;
-  const stepDelayMs = 32;
+  const totalSteps = 16;
+  const stepDelayMs = 16;
   let step = 0;
   const rowsPerStep = Math.ceil(h / totalSteps);
 
@@ -1195,12 +1195,53 @@ function spawnRainBubble(randomStart) {
   if (!canvas) return;
   const radius = canvas.width * (0.04 + Math.random()*0.018);
   rainBubbles.push({
-    x: radius + Math.random() * (canvas.width - radius*2),
+    x: pickBiasedSpawnX(radius),
     y: randomStart ? Math.random() * canvas.height : -radius,
     radius,
     color: PALETTE[Math.floor(Math.random()*PALETTE.length)],
-    speed: canvas.height * (0.00035 + Math.random()*0.00035) // slower fall
+    speed: canvas.height * (0.00018 + Math.random()*0.00018) // slower still
   });
+}
+
+// Weights bubble spawn x-position toward columns of the picture that are
+// still mostly uncoloured, so bubbles increasingly seek out empty areas
+// instead of dropping randomly (and often redundantly) anywhere.
+function pickBiasedSpawnX(radius) {
+  const w = canvas.width, h = canvas.height;
+  const fallback = () => radius + Math.random() * (w - radius*2);
+  try {
+    const buckets = 8, sampleH = 40;
+    const off = document.createElement("canvas");
+    off.width = buckets; off.height = sampleH;
+    const octx = off.getContext("2d");
+    octx.drawImage(canvas, 0, 0, buckets, sampleH);
+    const data = octx.getImageData(0, 0, buckets, sampleH).data;
+    const isGlow = currentMode && currentMode.variant === "glow";
+    const weights = new Array(buckets).fill(0.2); // baseline so every column stays possible
+    for (let bx = 0; bx < buckets; bx++) {
+      let uncolored = 0, total = 0;
+      for (let by = 0; by < sampleH; by++) {
+        const i = (by*buckets + bx) * 4;
+        const r = data[i], g = data[i+1], b = data[i+2];
+        const bright = (r+g+b)/3;
+        if (isGlow) { if (bright > 195) continue; } else { if (bright < 60) continue; }
+        total++;
+        const isBg = isGlow
+          ? (Math.abs(r-16)+Math.abs(g-20)+Math.abs(b-46) <= 60)
+          : (bright >= 235 && (Math.max(r,g,b)-Math.min(r,g,b)) <= 20);
+        if (isBg) uncolored++;
+      }
+      if (total > 0) weights[bx] += uncolored/total;
+    }
+    const sum = weights.reduce((a,c) => a+c, 0);
+    let roll = Math.random() * sum, chosen = 0;
+    for (let i = 0; i < buckets; i++) { roll -= weights[i]; if (roll <= 0) { chosen = i; break; } }
+    const bucketW = w / buckets;
+    const x = bucketW*chosen + Math.random()*bucketW;
+    return Math.min(w-radius, Math.max(radius, x));
+  } catch (e) {
+    return fallback();
+  }
 }
 
 function updateRainBubbles() {
@@ -1235,6 +1276,30 @@ function findRainBubbleAt(x, y) {
   for (let i = rainBubbles.length - 1; i >= 0; i--) {
     const b = rainBubbles[i];
     if (Math.hypot(x-b.x, y-b.y) <= b.radius * 1.15) return b;
+  }
+  return null;
+}
+
+function isPixelFillable(x, y) {
+  if (!canvas || x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return false;
+  const d = ctx.getImageData(x, y, 1, 1).data;
+  const bright = (d[0]+d[1]+d[2])/3;
+  const isGlow = currentMode && currentMode.variant === "glow";
+  return isGlow ? bright <= 195 : bright >= 60;
+}
+
+// Spirals outward from (x,y) to find the nearest pixel that's actually
+// fillable (not sitting exactly on a thin outline).
+function findFillablePixelNear(x, y, maxRadius) {
+  if (isPixelFillable(x, y)) return { x, y };
+  for (let r = 3; r <= maxRadius; r += 3) {
+    const steps = Math.max(8, Math.round(r * 1.1));
+    for (let i = 0; i < steps; i++) {
+      const ang = (i/steps) * Math.PI * 2;
+      const nx = Math.round(x + Math.cos(ang)*r);
+      const ny = Math.round(y + Math.sin(ang)*r);
+      if (isPixelFillable(nx, ny)) return { x: nx, y: ny };
+    }
   }
   return null;
 }
@@ -1768,11 +1833,16 @@ function onPointerDown(e) {
     }
     if (currentMode.variant === "rain") {
       // Color Rain: only popping a falling bubble fills anything, using
-      // that bubble's colour, right where it was tapped.
+      // that bubble's colour. We search near the bubble's own centre for
+      // a genuinely fillable pixel — the exact tap point sometimes lands
+      // right on a thin outline, which would otherwise silently do nothing.
       const bubble = findRainBubbleAt(pt.x, pt.y);
       if (!bubble) return;
       rainBubbles = rainBubbles.filter(b => b !== bubble);
-      floodFill(pt.x, pt.y, solidSampler(bubble.color), true);
+      const target = findFillablePixelNear(Math.round(bubble.x), Math.round(bubble.y), 45)
+        || findFillablePixelNear(pt.x, pt.y, 45);
+      if (!target) return;
+      floodFill(target.x, target.y, solidSampler(bubble.color), true);
       return;
     }
     let fillColor = selectedColor;

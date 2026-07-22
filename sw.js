@@ -1,4 +1,4 @@
-const CACHE_NAME = "jungle-coloring-v18";
+const CACHE_NAME = "jungle-coloring-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
