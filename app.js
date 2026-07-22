@@ -190,7 +190,7 @@ let redoStack = [];
 let drawing = false;
 let lastPt = null;
 let statusFilter = "all";
-let categoryFilter = "all";
+let categoryFilter = "boy"; // always one category active — no unfiltered "all" state
 
 let numberMap = null;         // Uint16Array (downscaled) -> region id
 let numberOf = null;          // regionId -> palette number (1-based)
@@ -335,17 +335,17 @@ function buildFilterChipsOnce() {
     statusRow.appendChild(chip);
   });
 
-  // No "All Categories" chip — tapping the already-active category
-  // deselects it (back to unfiltered) instead.
+  // No "All Categories" chip — exactly one category is always active,
+  // defaulting to Jungle Boy, so there's never an unfiltered "show
+  // everything" state to land on.
   CATEGORIES.forEach(c => {
     const chip = document.createElement("button");
-    chip.className = "filter-chip";
+    chip.className = "filter-chip" + (c.id === categoryFilter ? " active" : "");
     chip.textContent = c.label;
     chip.addEventListener("click", () => {
-      const alreadyActive = categoryFilter === c.id;
-      categoryFilter = alreadyActive ? "all" : c.id;
+      categoryFilter = c.id;
       categoryRow.querySelectorAll(".filter-chip").forEach(el => el.classList.remove("active"));
-      if (!alreadyActive) chip.classList.add("active");
+      chip.classList.add("active");
       renderGallery();
     });
     categoryRow.appendChild(chip);
