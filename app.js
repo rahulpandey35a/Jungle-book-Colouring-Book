@@ -591,6 +591,7 @@ function openPage(p) {
       loadRevealSource(p.src, p.coloredSrc, canvas.width, canvas.height);
     } else {
       revealImageData = null; revealedMask = null;
+      capturePristineLineArt(p.src, canvas.width, canvas.height);
     }
     setupSidebarForMode();
     if (currentMode.variant === "numbered") buildNumberRegions(p.src);
@@ -612,6 +613,7 @@ function openBlankCanvas() {
   numberCtx = numberCanvas.getContext("2d");
   undoStack = []; redoStack = [];
   numberMap = null; numberOf = null; activeMask = null;
+  lineArtImageData = null;
 
   const saved = getSave("drawing", "freeform");
   const finish = () => { setupSidebarForMode(); pushUndo(); hasUnsavedChanges = false; };
@@ -631,8 +633,7 @@ function openBlankCanvas() {
   }
 }
 
-function invertToGlow() {
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+function applyGlowTransform(imgData) {
   const d = imgData.data;
   // Deep navy background (not flat black) + bright cyan glow outlines,
   // blended smoothly by original darkness so anti-aliased linework stays
@@ -646,7 +647,30 @@ function invertToGlow() {
     d[i+1] = bgG + (lnG-bgG)*t;
     d[i+2] = bgB + (lnB-bgB)*t;
   }
+}
+function invertToGlow() {
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  applyGlowTransform(imgData);
   ctx.putImageData(imgData, 0, 0);
+}
+
+// Loads the page's line art fresh (never from a save) so the eraser
+// always has the true, never-coloured artwork to restore — including
+// its glow-mode transform where applicable.
+function capturePristineLineArt(src, w, h) {
+  lineArtImageData = null;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    const off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    const octx = off.getContext("2d");
+    octx.drawImage(img, 0, 0, w, h);
+    const data = octx.getImageData(0, 0, w, h);
+    if (currentMode.variant === "glow") applyGlowTransform(data);
+    lineArtImageData = data;
+  };
+  img.src = src;
 }
 
 function closePage() {
@@ -1482,8 +1506,15 @@ function brushStroke(x, y) {
     return;
   }
   if (tool === "eraser") {
-    ctx.fillStyle = (currentMode.variant === "glow") ? "#10142e" : "#ffffff";
-    ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
+    if (currentMode.variant === "blank" || !lineArtImageData) {
+      // Free Drawing has no artwork to preserve — plain white erase.
+      ctx.fillStyle = (currentMode.variant === "glow") ? "#10142e" : "#ffffff";
+      ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
+    } else {
+      // Restore the original line art here instead of painting over it,
+      // so erasing removes only applied colour, never the artwork itself.
+      coverDab(x, y, brushSize/2);
+    }
     return;
   }
   if (tool === "glitter") {
@@ -1585,6 +1616,10 @@ function brushLine(from, to) {
     coverLine(from, to, brushSize * 1.4);
     return;
   }
+  if (tool === "eraser" && currentMode.variant !== "blank" && lineArtImageData) {
+    coverLine(from, to, brushSize/2);
+    return;
+  }
   if (currentMode.containedBrush && tool === "brush") {
     maskedLine(from, to, brushSize/2, selectedColor, 1);
     return;
@@ -1640,6 +1675,7 @@ function wireControls() {
         revealedCount = 0;
         revealCelebrated = false;
       }
+      pageCelebratedComplete = false;
       pushUndo();
     };
     img.src = currentPage.src;
