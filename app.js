@@ -1,12 +1,18 @@
 // =========================================================================
-// Jungle Colouring Book — 9 play modes (inspired by "Coloring Games: Lucas
-// & Friends"): Fun Paint, Color Fill, Drawing, Glow Pen, Number Paint,
-// Doodle, Pixel Art, Color Rain, Patterns. Same 40 jungle pages reused
-// across every mode (except Drawing, which is a blank free-draw canvas).
+// Debu's Jungle Book Colouring World
 //
-// Saves are stored in IndexedDB (not localStorage) since a single saved
-// picture can be a couple MB and localStorage's ~5MB-per-site quota on
-// iOS would fill up after just a page or two.
+// Reference app ("Coloring Games: Lucas & Friends" by RV AppStudios)
+// officially documents 5 modes: Fun Paint, Color Fill, Drawing, Glow Pen,
+// Number Paint. We implement all 5, faithfully:
+//   - Fun Paint: tap-to-fill, a dozen bright colours.
+//   - Color Fill: drag-to-paint brush clipped to the region under your
+//     finger (a "stay inside the lines" scribble feel) plus a quick Fill
+//     button, crayon, glitter and stickers.
+//   - Drawing: free draw on a blank page.
+//   - Glow Pen: neon colours on a black background.
+//   - Number Paint: real numbered regions, tap to match & fill.
+// Plus 5 bonus modes built at your request beyond what the reference app
+// has: Doodle, Pixel Art, Color Rain, Water Color, Patterns.
 // =========================================================================
 
 // ---------- Palettes ----------
@@ -23,11 +29,19 @@ const NEON_PALETTE = [
   "#FF2E63", "#FF6B00", "#FFF200", "#39FF14", "#00F5D4",
   "#00B4FF", "#7B2FFF", "#FF00E5", "#FFFFFF"
 ];
+const PASTEL_PALETTE = [
+  "#F6BD60", "#F7EDE2", "#F5CAC3", "#84A59D", "#F28482",
+  "#90BE6D", "#B5838D", "#A8DADC", "#C8B6FF", "#FFD6A5"
+];
 const PATTERN_TYPES = [
-  { id: "dots",    icon: "🔵" },
-  { id: "stripes", icon: "〰️" },
-  { id: "stars",   icon: "⭐" },
-  { id: "hearts",  icon: "💗" }
+  { id: "dots",     icon: "🔵" },
+  { id: "stripes",  icon: "〰️" },
+  { id: "stars",    icon: "⭐" },
+  { id: "hearts",   icon: "💗" },
+  { id: "checker",  icon: "🏁" },
+  { id: "zigzag",   icon: "⚡" },
+  { id: "flowers",  icon: "🌼" },
+  { id: "waves",    icon: "🌊" }
 ];
 const STICKERS = ["⭐","💗","🌸","🦋","🍄","🌈","☀️","🍃"];
 
@@ -50,25 +64,31 @@ const PAGE_CATEGORY = {
 };
 
 // ---------- Mode config ----------
+// containedBrush: brush strokes are clipped to the enclosed region under
+// the finger — you must move over the whole area to fill it (vs. Fill,
+// which is instant on tap).
 const MODES = [
-  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Big taps, bright colours — great for little ones",
-    tools:["fill"], palette:BIG_PALETTE, variant:null },
-  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"Fill, brush, crayon, glitter & stickers",
-    tools:["fill","brush","eraser","crayon","glitter","sticker"], palette:PALETTE, variant:null },
+  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — a dozen bright colours",
+    thumb:"page-020.png", tools:["fill"], palette:BIG_PALETTE, variant:null },
+  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"Paint by moving your finger — plus crayon, glitter & stickers",
+    thumb:"page-028.png", tools:["brush","fill","eraser","crayon","glitter","sticker"],
+    palette:PALETTE, variant:null, containedBrush:true },
   { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page",
-    tools:["brush","eraser"], palette:PALETTE, variant:"blank" },
-  { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Paint neon colours on a dark background", cardClass:"glow",
-    tools:["fill","brush","eraser"], palette:NEON_PALETTE, variant:"glow" },
-  { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"A numbered palette — colour your way up",
-    tools:["fill","brush"], palette:PALETTE, variant:"numbered" },
+    thumb:null, tools:["brush","eraser"], palette:PALETTE, variant:"blank" },
+  { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Neon colours on a dark background", cardClass:"glow",
+    thumb:"page-032.png", tools:["fill","brush","eraser"], palette:NEON_PALETTE, variant:"glow" },
+  { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill",
+    thumb:"page-014.png", tools:["fill","brush"], palette:PALETTE, variant:"numbered" },
+  { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Soft, blended, see-through washes of colour",
+    thumb:"page-036.png", tools:["brush","eraser"], palette:PASTEL_PALETTE.concat(PALETTE), variant:"watercolor" },
   { id:"doodle",    icon:"🖊️", name:"Doodle",       desc:"Free-form scribble over the picture",
-    tools:["brush"], palette:PALETTE, variant:"doodle" },
+    thumb:"page-021.png", tools:["brush"], palette:PALETTE, variant:"doodle" },
   { id:"pixelart",  icon:"🧩", name:"Pixel Art",    desc:"Chunky, blocky pixel-style colouring",
-    tools:["fill","brush"], palette:PALETTE, variant:"pixel" },
-  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Watch colour drip and pour into place",
-    tools:["fill"], palette:PALETTE, variant:"rain" },
-  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with cute dots, stripes & stars", cardClass:"funpaint",
-    tools:["fill","brush"], palette:PALETTE, variant:"patterns" }
+    thumb:"page-011.png", tools:["fill","brush"], palette:PALETTE, variant:"pixel" },
+  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Watch colour pour into place",
+    thumb:"page-034.png", tools:["fill"], palette:PALETTE, variant:"rain" },
+  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more", cardClass:"funpaint",
+    thumb:"page-006.png", tools:["fill","brush"], palette:PALETTE, variant:"patterns" }
 ];
 
 // =========================================================================
@@ -91,7 +111,6 @@ function openDB() {
   });
   return dbPromise;
 }
-
 async function idbSet(key, value) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -101,17 +120,6 @@ async function idbSet(key, value) {
     tx.onerror = () => reject(tx.error);
   });
 }
-
-async function idbDelete(key) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
 async function idbGetAll() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -127,15 +135,8 @@ async function idbGetAll() {
     tx.onerror = () => reject(tx.error);
   });
 }
-
 async function initStorage() {
-  try {
-    saveCache = await idbGetAll();
-  } catch (e) {
-    saveCache = new Map();
-  }
-  // One-time migration from the old localStorage-based saves, then clear
-  // them out of localStorage to free that (tiny) quota back up.
+  try { saveCache = await idbGetAll(); } catch (e) { saveCache = new Map(); }
   try {
     const toMigrate = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -144,35 +145,19 @@ async function initStorage() {
     }
     for (const k of toMigrate) {
       const val = localStorage.getItem(k);
-      if (val && !saveCache.has(k)) {
-        await idbSet(k, val);
-        saveCache.set(k, val);
-      }
+      if (val && !saveCache.has(k)) { await idbSet(k, val); saveCache.set(k, val); }
       localStorage.removeItem(k);
     }
-  } catch (e) { /* ignore — migration is best-effort */ }
+  } catch (e) { /* best-effort */ }
 }
-
-function saveKey(mode, num) {
-  return `jungle-color-${mode}-page-${num}`;
-}
-
-function hasSave(mode, num) {
-  return saveCache.has(saveKey(mode, num));
-}
-
-function getSave(mode, num) {
-  return saveCache.get(saveKey(mode, num));
-}
-
+function saveKey(mode, num) { return `jungle-color-${mode}-page-${num}`; }
+function hasSave(mode, num) { return saveCache.has(saveKey(mode, num)); }
+function getSave(mode, num) { return saveCache.get(saveKey(mode, num)); }
 async function writeSave(mode, num, dataUrl) {
   const key = saveKey(mode, num);
   saveCache.set(key, dataUrl);
   await idbSet(key, dataUrl);
 }
-
-// Canvas -> compressed JPEG data URL (much smaller than PNG for painted
-// pictures, and IndexedDB has plenty of room compared to localStorage).
 function canvasToSavedDataUrl(cnv) {
   return cnv.toDataURL("image/jpeg", 0.85);
 }
@@ -194,11 +179,18 @@ let drawing = false;
 let lastPt = null;
 let statusFilter = "all";
 let categoryFilter = "all";
-let numberMap = null;     // Uint16Array (scaled-down) -> region id
-let numberOf = null;      // regionId -> palette number (1-based)
-let numberScale = 1;      // full-res coord / numberScale = numberMap coord
+
+let numberMap = null;         // Uint16Array (downscaled) -> region id
+let numberOf = null;          // regionId -> palette number (1-based)
+let numberScale = 1;
+let numberRegionInfo = null;  // regionId -> {fx, fy} full-res centroid
+let numberFontSize = 24;
 let numberBuilding = false;
-let numberBuildToken = 0; // guards against a stale async scan finishing late
+let numberBuildToken = 0;
+let numberRegionCount = {};  // palette number -> how many regions use it
+let numberFilledCount = {};  // palette number -> how many of those are filled
+
+let activeMask = null;        // Uint8Array w*h for containedBrush clipping
 
 const modeGrid = document.getElementById("mode-grid");
 const galleryGrid = document.getElementById("gallery-grid");
@@ -214,11 +206,29 @@ const toast = document.getElementById("toast");
 init();
 
 async function init() {
+  preventPinchZoomStuck();
   await initStorage();
   await preflightPages();
   buildModeGrid();
   wireControls();
   registerServiceWorker();
+}
+
+// iOS Safari can get stuck mid-pinch-zoom on installed PWAs since the
+// layout uses fixed full-screen views. Block pinch/double-tap zoom
+// gestures outright so the header/toolbar never scroll out of reach.
+function preventPinchZoomStuck() {
+  document.addEventListener("gesturestart", (e) => e.preventDefault());
+  document.addEventListener("gesturechange", (e) => e.preventDefault());
+  document.addEventListener("touchmove", (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, false);
 }
 
 async function preflightPages() {
@@ -247,6 +257,7 @@ function buildModeGrid() {
     const card = document.createElement("div");
     card.className = "mode-card" + (m.cardClass ? ` ${m.cardClass}` : "");
     card.innerHTML = `
+      ${m.thumb ? `<div class="mode-thumb"><img src="${m.thumb}" alt=""></div>` : ""}
       <span class="mode-icon">${m.icon}</span>
       <div class="mode-name">${m.name}</div>
       <div class="mode-desc">${m.desc}</div>
@@ -258,10 +269,7 @@ function buildModeGrid() {
 
 function selectMode(mode) {
   currentMode = mode;
-  if (mode.variant === "blank") {
-    openBlankCanvas();
-    return;
-  }
+  if (mode.variant === "blank") { openBlankCanvas(); return; }
   if (pages.length === 0) {
     emptyMsg.hidden = false;
     modeView.classList.remove("active");
@@ -342,13 +350,16 @@ function renderGallery() {
       card.classList.add("broken");
       img.replaceWith(brokenThumb());
     });
-
-    const label = document.createElement("div");
-    label.className = "num";
-    label.textContent = `Page ${p.num}`;
-
     card.appendChild(img);
-    card.appendChild(label);
+
+    // Birds & Critters cards read fine without a page-number caption.
+    if (PAGE_CATEGORY[p.num] !== "critters") {
+      const label = document.createElement("div");
+      label.className = "num";
+      label.textContent = `Page ${p.num}`;
+      card.appendChild(label);
+    }
+
     card.addEventListener("click", () => openPage(p));
     frag.appendChild(card);
   });
@@ -382,6 +393,7 @@ function setupSidebarForMode() {
 
 function setTool(t) {
   tool = t;
+  activeMask = null;
   document.querySelectorAll(".tool-btn[data-tool]").forEach(b => b.classList.remove("active"));
   const btn = document.getElementById(`${t}-tool`);
   if (btn) btn.classList.add("active");
@@ -425,7 +437,7 @@ function buildPalette() {
     sw.className = "swatch" + (i === 0 ? " selected" : "");
     sw.style.background = hex;
     sw.setAttribute("aria-label", `Colour ${hex}`);
-    if (currentMode.variant === "numbered") {
+    if (currentMode.variant === "numbered" && i < PALETTE.length) {
       const badge = document.createElement("span");
       badge.className = "swatch-num";
       badge.textContent = i + 1;
@@ -475,12 +487,10 @@ function openPage(p) {
   ctx = canvas.getContext("2d", { willReadFrequently: true });
   numberCanvas = document.getElementById("number-canvas");
   numberCtx = numberCanvas.getContext("2d");
-  undoStack = [];
-  redoStack = [];
-  numberMap = null;
-  numberOf = null;
-  numberBuilding = false;
-  numberBuildToken++;
+  undoStack = []; redoStack = [];
+  numberMap = null; numberOf = null; numberRegionInfo = null;
+  numberBuilding = false; numberBuildToken++;
+  activeMask = null;
 
   const saved = getSave(currentMode.id, p.num);
   const img = new Image();
@@ -494,9 +504,6 @@ function openPage(p) {
     ctx.drawImage(img, 0, 0);
     if (currentMode.variant === "glow" && !saved) invertToGlow();
     setupSidebarForMode();
-    // Number regions are always derived from the pristine source artwork
-    // (not the save), so tap-to-match colouring keeps working even after
-    // you've saved, closed, and reopened a page.
     if (currentMode.variant === "numbered") buildNumberRegions(p.src);
     pushUndo();
   };
@@ -512,18 +519,14 @@ function openBlankCanvas() {
   ctx = canvas.getContext("2d", { willReadFrequently: true });
   numberCanvas = document.getElementById("number-canvas");
   numberCtx = numberCanvas.getContext("2d");
-  undoStack = [];
-  redoStack = [];
-  numberMap = null;
-  numberOf = null;
+  undoStack = []; redoStack = [];
+  numberMap = null; numberOf = null; activeMask = null;
 
   const saved = getSave("drawing", "freeform");
   const finish = () => { setupSidebarForMode(); pushUndo(); };
 
-  canvas.width = 1000;
-  canvas.height = 1300;
-  numberCanvas.width = 1000;
-  numberCanvas.height = 1300;
+  canvas.width = 1000; canvas.height = 1300;
+  numberCanvas.width = 1000; numberCanvas.height = 1300;
   numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
 
   if (saved) {
@@ -537,15 +540,11 @@ function openBlankCanvas() {
   }
 }
 
-// Turn the white background + black line art into a black background with
-// bright outlines, for the Glow Pen mode.
 function invertToGlow() {
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const d = imgData.data;
   for (let i = 0; i < d.length; i += 4) {
-    d[i] = 255 - d[i];
-    d[i+1] = 255 - d[i+1];
-    d[i+2] = 255 - d[i+2];
+    d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2];
   }
   ctx.putImageData(imgData, 0, 0);
 }
@@ -576,22 +575,16 @@ function pushUndo() {
     redoStack = [];
   } catch (e) { /* ignore */ }
 }
-
 function restoreFromDataUrl(dataUrl) {
   const img = new Image();
-  img.onload = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
-  };
+  img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); };
   img.src = dataUrl;
 }
-
 function undo() {
   if (undoStack.length < 2) return;
   redoStack.push(undoStack.pop());
   restoreFromDataUrl(undoStack[undoStack.length - 1]);
 }
-
 function redo() {
   if (redoStack.length === 0) return;
   const next = redoStack.pop();
@@ -611,75 +604,86 @@ function canvasPoint(evt) {
     y: Math.floor((clientY - rect.top) * scaleY)
   };
 }
-
 function hexToRGBA(hex) {
   const v = parseInt(hex.slice(1), 16);
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255, 255];
 }
 
-// ---------- Pattern tiles (for Patterns mode) ----------
+// ---------- Pattern tiles ----------
 const patternTileCache = {};
 function getPatternTile(patternId, hex) {
   const key = patternId + hex;
   if (patternTileCache[key]) return patternTileCache[key];
-
-  const size = 20;
+  const size = 22;
   const off = document.createElement("canvas");
   off.width = size; off.height = size;
-  const octx = off.getContext("2d");
-  octx.fillStyle = "#ffffff";
-  octx.fillRect(0, 0, size, size);
-  octx.fillStyle = hex;
-  octx.strokeStyle = hex;
+  const o = off.getContext("2d");
+  o.fillStyle = "#ffffff"; o.fillRect(0, 0, size, size);
+  o.fillStyle = hex; o.strokeStyle = hex;
 
   if (patternId === "dots") {
-    octx.beginPath(); octx.arc(size/2, size/2, size*0.28, 0, Math.PI*2); octx.fill();
+    o.beginPath(); o.arc(size/2, size/2, size*0.28, 0, Math.PI*2); o.fill();
   } else if (patternId === "stripes") {
-    octx.lineWidth = size*0.35;
-    octx.beginPath(); octx.moveTo(-2, size+2); octx.lineTo(size+2, -2); octx.stroke();
+    o.lineWidth = size*0.35;
+    o.beginPath(); o.moveTo(-2, size+2); o.lineTo(size+2, -2); o.stroke();
   } else if (patternId === "stars") {
-    drawStar(octx, size/2, size/2, 4, size*0.42, size*0.18);
-    octx.fill();
+    drawStar(o, size/2, size/2, 4, size*0.42, size*0.18); o.fill();
   } else if (patternId === "hearts") {
-    drawHeart(octx, size/2, size/2, size*0.3);
-    octx.fill();
+    drawHeart(o, size/2, size/2, size*0.3); o.fill();
+  } else if (patternId === "checker") {
+    o.fillRect(0, 0, size/2, size/2);
+    o.fillRect(size/2, size/2, size/2, size/2);
+  } else if (patternId === "zigzag") {
+    o.lineWidth = size*0.16; o.lineJoin = "round"; o.lineCap = "round";
+    o.beginPath();
+    o.moveTo(0, size*0.3); o.lineTo(size*0.25, size*0.7); o.lineTo(size*0.5, size*0.3);
+    o.lineTo(size*0.75, size*0.7); o.lineTo(size, size*0.3);
+    o.stroke();
+  } else if (patternId === "flowers") {
+    for (let a = 0; a < 5; a++) {
+      const ang = (a / 5) * Math.PI * 2;
+      o.beginPath();
+      o.ellipse(size/2 + Math.cos(ang)*size*0.2, size/2 + Math.sin(ang)*size*0.2, size*0.16, size*0.1, ang, 0, Math.PI*2);
+      o.fill();
+    }
+    o.fillStyle = "#ffffff";
+    o.beginPath(); o.arc(size/2, size/2, size*0.1, 0, Math.PI*2); o.fill();
+  } else if (patternId === "waves") {
+    o.lineWidth = size*0.14;
+    o.beginPath();
+    o.moveTo(-2, size*0.5);
+    o.quadraticCurveTo(size*0.25, size*0.2, size*0.5, size*0.5);
+    o.quadraticCurveTo(size*0.75, size*0.8, size+2, size*0.5);
+    o.stroke();
   }
 
-  const tile = octx.getImageData(0, 0, size, size);
+  const tile = o.getImageData(0, 0, size, size);
   patternTileCache[key] = tile;
   return tile;
 }
-
-function drawStar(ctx2, cx, cy, spikes, outerR, innerR) {
-  let rot = Math.PI / 2 * 3, x = cx, y = cy;
-  const step = Math.PI / spikes;
-  ctx2.beginPath();
-  ctx2.moveTo(cx, cy - outerR);
-  for (let i = 0; i < spikes; i++) {
-    x = cx + Math.cos(rot) * outerR; y = cy + Math.sin(rot) * outerR;
-    ctx2.lineTo(x, y); rot += step;
-    x = cx + Math.cos(rot) * innerR; y = cy + Math.sin(rot) * innerR;
-    ctx2.lineTo(x, y); rot += step;
+function drawStar(o, cx, cy, spikes, outerR, innerR) {
+  let rot = Math.PI/2*3, x=cx, y=cy;
+  const step = Math.PI/spikes;
+  o.beginPath(); o.moveTo(cx, cy-outerR);
+  for (let i=0; i<spikes; i++) {
+    x = cx+Math.cos(rot)*outerR; y = cy+Math.sin(rot)*outerR; o.lineTo(x,y); rot+=step;
+    x = cx+Math.cos(rot)*innerR; y = cy+Math.sin(rot)*innerR; o.lineTo(x,y); rot+=step;
   }
-  ctx2.lineTo(cx, cy - outerR);
-  ctx2.closePath();
+  o.lineTo(cx, cy-outerR); o.closePath();
 }
-
-function drawHeart(ctx2, cx, cy, r) {
-  ctx2.beginPath();
-  ctx2.moveTo(cx, cy + r*0.6);
-  ctx2.bezierCurveTo(cx + r*1.4, cy - r*0.6, cx + r*0.6, cy - r*1.4, cx, cy - r*0.3);
-  ctx2.bezierCurveTo(cx - r*0.6, cy - r*1.4, cx - r*1.4, cy - r*0.6, cx, cy + r*0.6);
-  ctx2.closePath();
+function drawHeart(o, cx, cy, r) {
+  o.beginPath();
+  o.moveTo(cx, cy+r*0.6);
+  o.bezierCurveTo(cx+r*1.4, cy-r*0.6, cx+r*0.6, cy-r*1.4, cx, cy-r*0.3);
+  o.bezierCurveTo(cx-r*0.6, cy-r*1.4, cx-r*1.4, cy-r*0.6, cx, cy+r*0.6);
+  o.closePath();
 }
 
 // =========================================================================
-// Number Paint: region labelling
-// Always computed from the pristine source image (never the save, and
-// never the on-screen canvas), so it works the same whether this is the
-// first time you've opened the page or the twentieth. Runs on a
-// downscaled copy for speed, then numbers are drawn on a transparent
-// overlay canvas so the painted artwork itself is never touched.
+// Number Paint region labelling — always derived from the pristine source
+// artwork (never the save), drawn onto a transparent overlay canvas that
+// sits above the paintable canvas, so colouring never disturbs it and
+// reopening a saved page keeps full tap-to-match behaviour.
 // =========================================================================
 function buildNumberRegions(src) {
   const myToken = ++numberBuildToken;
@@ -687,8 +691,9 @@ function buildNumberRegions(src) {
   showToast("Preparing numbers\u2026");
 
   const probe = new Image();
+  probe.crossOrigin = "anonymous";
   probe.onload = () => {
-    if (myToken !== numberBuildToken) return; // a newer page opened meanwhile
+    if (myToken !== numberBuildToken) return;
 
     const fullW = probe.naturalWidth, fullH = probe.naturalHeight;
     const scale = Math.min(1, 480 / Math.max(fullW, fullH));
@@ -704,7 +709,7 @@ function buildNumberRegions(src) {
     const idx = (x, y) => (y * w + x) * 4;
     const isBarrier = (x, y) => {
       const i = idx(x, y);
-      return (data[i] + data[i+1] + data[i+2]) / 3 < 90; // slightly looser at low-res
+      return (data[i] + data[i+1] + data[i+2]) / 3 < 90;
     };
 
     const map = new Uint16Array(w * h);
@@ -715,7 +720,6 @@ function buildNumberRegions(src) {
       for (let x = 0; x < w; x++) {
         const p = y * w + x;
         if (map[p] !== 0 || isBarrier(x, y)) continue;
-
         const id = nextId++;
         let count = 0, sumX = 0, sumY = 0;
         const stack = [[x, y]];
@@ -724,18 +728,15 @@ function buildNumberRegions(src) {
           if (cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
           const cp = cy * w + cx;
           if (map[cp] !== 0 || isBarrier(cx, cy)) continue;
-
           let xl = cx;
           while (xl >= 0 && map[cy*w+xl] === 0 && !isBarrier(xl, cy)) xl--;
           xl++;
           let xr = cx;
           while (xr < w && map[cy*w+xr] === 0 && !isBarrier(xr, cy)) xr++;
           xr--;
-
           let spanAbove = false, spanBelow = false;
           for (let xi = xl; xi <= xr; xi++) {
-            map[cy*w+xi] = id;
-            count++; sumX += xi; sumY += cy;
+            map[cy*w+xi] = id; count++; sumX += xi; sumY += cy;
             if (cy > 0) {
               const above = map[(cy-1)*w+xi] === 0 && !isBarrier(xi, cy-1);
               if (above && !spanAbove) { stack.push([xi, cy-1]); spanAbove = true; }
@@ -752,28 +753,42 @@ function buildNumberRegions(src) {
       }
     }
 
-    const MIN_AREA = Math.max(300, Math.round(w * h * 0.006));
-    const numbered = regions.filter(r => r.count >= MIN_AREA)
-      .sort((a, b) => (a.cy - b.cy) || (a.cx - b.cx));
+    // Bigger minimum + a sensible cap keeps this looking like a real
+    // colour-by-number sheet rather than every stray leaf getting a number.
+    const MIN_AREA = Math.max(500, Math.round(w * h * 0.009));
+    let numbered = regions.filter(r => r.count >= MIN_AREA);
+    const MAX_REGIONS = 18;
+    if (numbered.length > MAX_REGIONS) {
+      numbered = numbered.sort((a, b) => b.count - a.count).slice(0, MAX_REGIONS);
+    }
+    numbered.sort((a, b) => (a.cy - b.cy) || (a.cx - b.cx));
 
     const numOf = {};
-    numbered.forEach((r, i) => { numOf[r.id] = (i % PALETTE.length) + 1; });
+    const info = {};
+    const regionCount = {};
+    numbered.forEach((r, i) => {
+      const n = (i % PALETTE.length) + 1;
+      numOf[r.id] = n;
+      info[r.id] = { fx: r.cx / scale, fy: r.cy / scale };
+      regionCount[n] = (regionCount[n] || 0) + 1;
+    });
 
     if (myToken !== numberBuildToken) return;
     numberMap = map;
     numberOf = numOf;
+    numberRegionInfo = info;
     numberScale = scale;
+    numberRegionCount = regionCount;
+    numberFilledCount = {};
+    numberFontSize = Math.max(18, Math.round(Math.min(fullW, fullH) * 0.032));
 
-    // Draw labels on the transparent overlay canvas (full resolution),
-    // scaling region centroids back up from the analysis resolution.
-    const fontSize = Math.max(18, Math.round(Math.min(fullW, fullH) * 0.032));
     numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
-    numberCtx.font = `800 ${fontSize}px ui-rounded, system-ui, sans-serif`;
+    numberCtx.font = `800 ${numberFontSize}px ui-rounded, system-ui, sans-serif`;
     numberCtx.textAlign = "center";
     numberCtx.textBaseline = "middle";
     numbered.forEach(r => {
       const n = numOf[r.id];
-      const fx = r.cx / scale, fy = r.cy / scale;
+      const { fx, fy } = info[r.id];
       numberCtx.fillStyle = "#ffffff";
       numberCtx.strokeStyle = PALETTE[n-1];
       numberCtx.lineWidth = 3;
@@ -784,15 +799,41 @@ function buildNumberRegions(src) {
     numberBuilding = false;
     showToast("Ready! Tap a number \u2728");
   };
-  probe.crossOrigin = "anonymous";
   probe.src = src;
 }
 
+// Once a numbered region is filled, its number fades away like a real
+// colour-by-number sheet instead of staying on top of the finished colour.
+function clearNumberLabel(regionId) {
+  if (!numberRegionInfo || !numberRegionInfo[regionId]) return;
+  const { fx, fy } = numberRegionInfo[regionId];
+  const r = numberFontSize * 0.9;
+  numberCtx.clearRect(fx - r, fy - r, r * 2, r * 2);
+}
+
+// Marks one region (by its assigned palette number) as filled. Once every
+// region sharing that number is done, the matching palette swatch fades
+// away too — same finishing feel as the numbers disappearing.
+function markNumberRegionFilled(n) {
+  numberFilledCount[n] = (numberFilledCount[n] || 0) + 1;
+  const total = numberRegionCount[n] || 1;
+  if (numberFilledCount[n] >= total) {
+    hidePaletteSwatch(n);
+  }
+}
+
+function hidePaletteSwatch(n) {
+  const swatches = document.querySelectorAll("#palette .swatch");
+  const sw = swatches[n - 1];
+  if (sw && !sw.classList.contains("swatch-done")) {
+    sw.classList.add("swatch-done");
+  }
+}
+
 // ---------- Flood fill ----------
-// sampler(x,y) -> [r,g,b,a]; used for solid colour or a pattern tile lookup.
 function floodFill(startX, startY, sampler, animate) {
   const w = canvas.width, h = canvas.height;
-  if (startX < 0 || startY < 0 || startX >= w || startY >= h) return;
+  if (startX < 0 || startY < 0 || startX >= w || startY >= h) return null;
 
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
@@ -805,7 +846,7 @@ function floodFill(startX, startY, sampler, animate) {
   const brightness = (startR + startG + startB) / 3;
   const isGlow = currentMode && currentMode.variant === "glow";
   const isBarrier = isGlow ? (v => v > 200) : (v => v < 60);
-  if (isBarrier(brightness)) return;
+  if (isBarrier(brightness)) return null;
 
   const tolerance = 48;
   const matches = (x, y) => {
@@ -824,21 +865,18 @@ function floodFill(startX, startY, sampler, animate) {
     let [x, y] = stack.pop();
     if (x < 0 || x >= w || y < 0 || y >= h) continue;
     if (visited[y*w+x]) continue;
-
     let xl = x;
     while (xl >= 0 && matches(xl, y) && !visited[y*w+xl]) xl--;
     xl++;
     let xr = x;
     while (xr < w && matches(xr, y) && !visited[y*w+xr]) xr++;
     xr--;
-
     let spanAbove = false, spanBelow = false;
     for (let xi = xl; xi <= xr; xi++) {
       const i = idx(xi, y);
       const [pr, pg, pb, pa] = sampler(xi, y);
       data[i] = pr; data[i+1] = pg; data[i+2] = pb; data[i+3] = pa;
       visited[y*w+xi] = 1;
-
       if (y > 0) {
         const above = matches(xi, y-1) && !visited[(y-1)*w+xi];
         if (above && !spanAbove) { stack.push([xi, y-1]); spanAbove = true; }
@@ -854,11 +892,14 @@ function floodFill(startX, startY, sampler, animate) {
 
   if (animate) animateRainReveal(imgData, visited, w, h);
   else ctx.putImageData(imgData, 0, 0);
+  return visited;
 }
 
+// Slowed + staggered so the "pouring" effect actually reads as rain.
 function animateRainReveal(finalImgData, visited, w, h) {
   const before = ctx.getImageData(0, 0, w, h);
-  const totalSteps = 24;
+  const totalSteps = 36;
+  const stepDelayMs = 32;
   let step = 0;
   const rowsPerStep = Math.ceil(h / totalSteps);
 
@@ -880,20 +921,19 @@ function animateRainReveal(finalImgData, visited, w, h) {
       }
     }
     ctx.putImageData(out, 0, 0);
-    if (cutoff < h) requestAnimationFrame(frame);
+    if (cutoff < h) setTimeout(frame, stepDelayMs);
     else pushUndo();
   }
-  requestAnimationFrame(frame);
+  setTimeout(frame, stepDelayMs);
 }
 
 function solidSampler(hex) {
   const [r,g,b,a] = hexToRGBA(hex);
   return () => [r,g,b,a];
 }
-
 function patternSampler(patternId, hex) {
   const tile = getPatternTile(patternId, hex);
-  const size = 20;
+  const size = 22;
   return (x, y) => {
     const tx = ((x % size) + size) % size;
     const ty = ((y % size) + size) % size;
@@ -902,7 +942,102 @@ function patternSampler(patternId, hex) {
   };
 }
 
-// ---------- Brush-family tools ----------
+// ---------- Region mask for the Color Fill "contained brush" ----------
+// Computes which pixels belong to the same enclosed region as (startX,
+// startY), using identical adjacency rules to floodFill, but only marks
+// membership — never writes colour. Used to clip brush strokes so
+// scribbling stays inside the lines.
+function computeRegionMask(startX, startY) {
+  const w = canvas.width, h = canvas.height;
+  if (startX < 0 || startY < 0 || startX >= w || startY >= h) return null;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  const idx = (x, y) => (y * w + x) * 4;
+  const startIdx = idx(startX, startY);
+  const startR = data[startIdx], startG = data[startIdx+1],
+        startB = data[startIdx+2], startA = data[startIdx+3];
+  const brightness = (startR + startG + startB) / 3;
+  if (brightness < 60) return null; // started on an outline
+
+  const tolerance = 48;
+  const matches = (x, y) => {
+    const i = idx(x, y);
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    if ((r+g+b)/3 < 60) return false;
+    return Math.abs(r-startR)<=tolerance && Math.abs(g-startG)<=tolerance &&
+           Math.abs(b-startB)<=tolerance && Math.abs(a-startA)<=tolerance;
+  };
+
+  const mask = new Uint8Array(w * h);
+  const stack = [[startX, startY]];
+  while (stack.length) {
+    let [x, y] = stack.pop();
+    if (x < 0 || x >= w || y < 0 || y >= h) continue;
+    if (mask[y*w+x]) continue;
+    let xl = x;
+    while (xl >= 0 && matches(xl, y) && !mask[y*w+xl]) xl--;
+    xl++;
+    let xr = x;
+    while (xr < w && matches(xr, y) && !mask[y*w+xr]) xr++;
+    xr--;
+    let spanAbove = false, spanBelow = false;
+    for (let xi = xl; xi <= xr; xi++) {
+      mask[y*w+xi] = 1;
+      if (y > 0) {
+        const above = matches(xi, y-1) && !mask[(y-1)*w+xi];
+        if (above && !spanAbove) { stack.push([xi, y-1]); spanAbove = true; }
+        else if (!above) spanAbove = false;
+      }
+      if (y < h-1) {
+        const below = matches(xi, y+1) && !mask[(y+1)*w+xi];
+        if (below && !spanBelow) { stack.push([xi, y+1]); spanBelow = true; }
+        else if (!below) spanBelow = false;
+      }
+    }
+  }
+  return mask;
+}
+
+// Paints a soft/solid dab, clipped to activeMask if one is set.
+function maskedDab(cx, cy, radius, hex, opacity) {
+  const w = canvas.width, h = canvas.height;
+  const x0 = Math.max(0, Math.floor(cx-radius)), y0 = Math.max(0, Math.floor(cy-radius));
+  const x1 = Math.min(w, Math.ceil(cx+radius)), y1 = Math.min(h, Math.ceil(cy+radius));
+  const bw = x1-x0, bh = y1-y0;
+  if (bw <= 0 || bh <= 0) return;
+  const imgData = ctx.getImageData(x0, y0, bw, bh);
+  const data = imgData.data;
+  const [r,g,b] = hexToRGBA(hex);
+  const op = opacity == null ? 1 : opacity;
+  for (let yy = 0; yy < bh; yy++) {
+    for (let xx = 0; xx < bw; xx++) {
+      const gx = x0+xx, gy = y0+yy;
+      const dx = gx-cx, dy = gy-cy;
+      const distSq = dx*dx+dy*dy;
+      if (distSq > radius*radius) continue;
+      if (activeMask && !activeMask[gy*w+gx]) continue;
+      const i = (yy*bw+xx)*4;
+      const falloff = op * (1 - Math.sqrt(distSq)/radius*0.35); // soft edge
+      data[i]   = data[i]   + (r-data[i])   * falloff;
+      data[i+1] = data[i+1] + (g-data[i+1]) * falloff;
+      data[i+2] = data[i+2] + (b-data[i+2]) * falloff;
+      data[i+3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, x0, y0);
+}
+
+function maskedLine(from, to, radius, hex, opacity) {
+  const dist = Math.hypot(to.x-from.x, to.y-from.y);
+  const step = Math.max(2, radius * 0.5);
+  const steps = Math.max(1, Math.ceil(dist / step));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    maskedDab(from.x + (to.x-from.x)*t, from.y + (to.y-from.y)*t, radius, hex, opacity);
+  }
+}
+
+// ---------- Brush-family tools (unclipped — free draw / other modes) ----------
 function brushStroke(x, y) {
   if (tool === "eraser") {
     ctx.fillStyle = (currentMode.variant === "glow") ? "#000000" : "#ffffff";
@@ -938,11 +1073,23 @@ function brushStroke(x, y) {
     ctx.fillRect(gx, gy, cell, cell);
     return;
   }
+  if (currentMode.variant === "watercolor") {
+    maskedDab(x, y, brushSize * 1.6, selectedColor, 0.16);
+    return;
+  }
   ctx.fillStyle = selectedColor;
   ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
 }
 
 function brushLine(from, to) {
+  if (currentMode.containedBrush && tool === "brush") {
+    maskedLine(from, to, brushSize/2, selectedColor, 1);
+    return;
+  }
+  if (currentMode.variant === "watercolor" && tool === "brush") {
+    maskedLine(from, to, brushSize * 1.6, selectedColor, 0.16);
+    return;
+  }
   if (currentMode.variant === "pixel" && tool !== "eraser") {
     brushStroke(to.x, to.y);
     return;
@@ -961,8 +1108,7 @@ function brushLine(from, to) {
 
 function placeSticker(x, y) {
   ctx.font = `${brushSize * 2.4}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(selectedSticker, x, y);
 }
 
@@ -1009,11 +1155,8 @@ function wireControls() {
     if (!currentPage) return;
     try {
       const dataUrl = canvasToSavedDataUrl(canvas);
-      if (currentMode.variant === "blank") {
-        await writeSave("drawing", "freeform", dataUrl);
-      } else {
-        await writeSave(currentMode.id, currentPage.num, dataUrl);
-      }
+      if (currentMode.variant === "blank") await writeSave("drawing", "freeform", dataUrl);
+      else await writeSave(currentMode.id, currentPage.num, dataUrl);
       celebrate();
     } catch (e) {
       showToast("Couldn't save \u2014 please try again");
@@ -1042,22 +1185,37 @@ function onPointerDown(e) {
   const pt = canvasPoint(e);
 
   if (tool === "fill") {
+    if (currentMode.variant === "pixel") {
+      // Pixel Art: tapping stamps one blocky cell, not a whole flood fill.
+      brushStroke(pt.x, pt.y);
+      pushUndo();
+      return;
+    }
     let fillColor = selectedColor;
+    let matchedRegionId = null;
+    let matchedNumber = null;
     if (currentMode.variant === "numbered" && numberMap && !numberBuilding) {
-      const mx = Math.min(numberCanvas.width - 1, Math.floor(pt.x * numberScale));
-      const my = Math.min(numberCanvas.height - 1, Math.floor(pt.y * numberScale));
       const mapW = Math.round(canvas.width * numberScale);
+      const mapH = Math.round(canvas.height * numberScale);
+      const mx = Math.min(mapW - 1, Math.floor(pt.x * numberScale));
+      const my = Math.min(mapH - 1, Math.floor(pt.y * numberScale));
       const id = numberMap[my * mapW + mx];
       const n = id && numberOf[id];
       if (n) {
         fillColor = PALETTE[n - 1];
         selectColorSwatch(n - 1);
+        matchedRegionId = id;
+        matchedNumber = n;
       }
     }
     const sampler = (currentMode.variant === "patterns")
       ? patternSampler(selectedPattern, selectedColor)
       : solidSampler(fillColor);
     floodFill(pt.x, pt.y, sampler, currentMode.variant === "rain");
+    if (matchedRegionId) {
+      clearNumberLabel(matchedRegionId);
+      markNumberRegionFilled(matchedNumber);
+    }
     if (currentMode.variant !== "rain") pushUndo();
   } else if (tool === "sticker") {
     placeSticker(pt.x, pt.y);
@@ -1065,7 +1223,15 @@ function onPointerDown(e) {
   } else {
     drawing = true;
     lastPt = pt;
-    brushStroke(pt.x, pt.y);
+    if (currentMode.containedBrush && tool === "brush") {
+      activeMask = computeRegionMask(pt.x, pt.y);
+      if (activeMask) maskedDab(pt.x, pt.y, brushSize/2, selectedColor, 1);
+    } else if (currentMode.variant === "watercolor" && tool === "brush") {
+      activeMask = null;
+      brushStroke(pt.x, pt.y);
+    } else {
+      brushStroke(pt.x, pt.y);
+    }
   }
 }
 
@@ -1078,7 +1244,11 @@ function onPointerMove(e) {
 }
 
 function onPointerUp() {
-  if (drawing) { drawing = false; pushUndo(); }
+  if (drawing) {
+    drawing = false;
+    activeMask = null;
+    pushUndo();
+  }
 }
 
 // ---------- Toast + celebration ----------
@@ -1089,14 +1259,12 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, 1600);
 }
-
 function celebrate() {
   const el = document.getElementById("celebration");
   el.hidden = false;
   spawnConfetti();
   setTimeout(() => { el.hidden = true; }, 1500);
 }
-
 function spawnConfetti() {
   const emojis = ["🎉","✨","🌟","🎊","💚"];
   for (let i = 0; i < 18; i++) {
