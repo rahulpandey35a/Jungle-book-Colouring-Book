@@ -45,14 +45,24 @@ const PASTEL_PALETTE = [
   "#90BE6D", "#B5838D", "#A8DADC", "#C8B6FF", "#FFD6A5"
 ];
 const PATTERN_TYPES = [
-  { id: "dots",     icon: "🔵" },
-  { id: "stripes",  icon: "〰️" },
-  { id: "stars",    icon: "⭐" },
-  { id: "hearts",   icon: "💗" },
-  { id: "checker",  icon: "🏁" },
-  { id: "zigzag",   icon: "⚡" },
-  { id: "flowers",  icon: "🌼" },
-  { id: "waves",    icon: "🌊" }
+  { id: "dots",      icon: "🔵" },
+  { id: "stripes",   icon: "〰️" },
+  { id: "stars",     icon: "⭐" },
+  { id: "hearts",    icon: "💗" },
+  { id: "checker",   icon: "🏁" },
+  { id: "zigzag",    icon: "⚡" },
+  { id: "flowers",   icon: "🌼" },
+  { id: "waves",     icon: "🌊" },
+  { id: "triangles", icon: "🔺" },
+  { id: "diamonds",  icon: "🔶" },
+  { id: "moons",     icon: "🌙" },
+  { id: "plus",      icon: "➕" },
+  { id: "spiral",    icon: "🌀" },
+  { id: "paws",      icon: "🐾" },
+  { id: "rainbow",   icon: "🌈" },
+  { id: "confetti",  icon: "🎉" },
+  { id: "clovers",   icon: "🍀" },
+  { id: "bubbles",   icon: "🫧" }
 ];
 const STICKERS = ["⭐","💗","🌸","🦋","🍄","🌈","☀️","🍃"];
 
@@ -79,8 +89,8 @@ const PAGE_CATEGORY = {
 // the finger — you must move over the whole area to fill it (vs. Fill,
 // which is instant on tap).
 const MODES = [
-  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — a dozen bright colours",
-    thumb:"page-020.png", tools:["fill"], palette:BIG_PALETTE, variant:null },
+  { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — the full colour palette",
+    thumb:"page-020.png", tools:["fill"], palette:PALETTE, variant:null },
   { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"7 pencils — crayon, marker, pastel, chalk, glitter, rainbow & bugs",
     thumb:"page-028.png", tools:["brush","fill","eraser","crayon","marker","pastel","chalk","glitter","rainbow","motif","sticker"],
     palette:PALETTE, variant:null, containedBrush:true },
@@ -96,7 +106,7 @@ const MODES = [
     thumb:"page-021.png", tools:["brush","crayon","marker","glitter","rainbow","motif"], palette:PALETTE, variant:"doodle" },
   { id:"pixelart",  icon:"🧩", name:"Pixel Art",    desc:"Chunky, blocky pixel-style colouring",
     thumb:"page-011.png", tools:["fill","brush"], palette:PALETTE, variant:"pixel" },
-  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Watch colour pour into place",
+  { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Pop a falling colour bubble to fill where it lands",
     thumb:"page-034.png", tools:["fill"], palette:PALETTE, variant:"rain" },
   { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more, or draw rainbow & bug trails", cardClass:"funpaint",
     thumb:"page-006.png", tools:["fill","brush","rainbow","motif"], palette:PALETTE, variant:"patterns" }
@@ -207,6 +217,11 @@ let rainbowHue = 0;           // advances as the rainbow pencil draws
 let lastMotifPt = null;       // last spot a motif icon was stamped
 let motifIndex = 0;
 const MOTIF_ICONS = ["🐞","🐛","🦋","⭐","🌸"];
+
+// Color Rain: falling colour bubbles, drawn on the number-canvas overlay.
+let rainBubbles = [];
+let rainAnimHandle = null;
+let rainSpawnTimer = null;
 let hasUnsavedChanges = false;
 let pendingLeaveAction = null;
 let revealImageData = null;   // Water Color: the hidden fully-coloured picture
@@ -420,7 +435,7 @@ function setupSidebarForMode() {
   document.getElementById("color-mode-label").textContent = `${currentMode.icon} ${currentMode.name}`;
 
   buildPalette();
-  document.getElementById("palette").hidden = (currentMode.variant === "watercolor");
+  document.getElementById("palette").hidden = (currentMode.variant === "watercolor" || currentMode.variant === "rain");
   document.getElementById("sticker-row").hidden = !currentMode.tools.includes("sticker");
   if (currentMode.tools.includes("sticker")) buildStickerRow();
 }
@@ -526,6 +541,7 @@ function openPage(p) {
   numberBuilding = false; numberBuildToken++;
   activeMask = null;
   revealCelebrated = false;
+  stopRainBubbles();
 
   const saved = getSave(currentMode.id, p.num);
   const img = new Image();
@@ -545,6 +561,7 @@ function openPage(p) {
     }
     setupSidebarForMode();
     if (currentMode.variant === "numbered") buildNumberRegions(p.src);
+    if (currentMode.variant === "rain") startRainBubbles();
     pushUndo();
     hasUnsavedChanges = false;
   };
@@ -592,6 +609,7 @@ function invertToGlow() {
 
 function closePage() {
   cancelCelebration();
+  stopRainBubbles();
   colorView.classList.remove("active");
   colorView.className = "view";
   if (currentMode && currentMode.variant === "blank") {
@@ -604,6 +622,7 @@ function closePage() {
 
 function goHome() {
   cancelCelebration();
+  stopRainBubbles();
   colorView.classList.remove("active");
   galleryView.classList.remove("active");
   colorView.className = "view";
@@ -714,6 +733,82 @@ function getPatternTile(patternId, hex) {
     o.quadraticCurveTo(size*0.25, size*0.2, size*0.5, size*0.5);
     o.quadraticCurveTo(size*0.75, size*0.8, size+2, size*0.5);
     o.stroke();
+  } else if (patternId === "triangles") {
+    o.beginPath();
+    o.moveTo(size*0.5, size*0.15);
+    o.lineTo(size*0.85, size*0.8);
+    o.lineTo(size*0.15, size*0.8);
+    o.closePath();
+    o.fill();
+  } else if (patternId === "diamonds") {
+    o.beginPath();
+    o.moveTo(size*0.5, size*0.1);
+    o.lineTo(size*0.85, size*0.5);
+    o.lineTo(size*0.5, size*0.9);
+    o.lineTo(size*0.15, size*0.5);
+    o.closePath();
+    o.fill();
+  } else if (patternId === "moons") {
+    o.beginPath();
+    o.arc(size*0.48, size/2, size*0.32, 0, Math.PI*2);
+    o.fill();
+    o.fillStyle = "#ffffff";
+    o.beginPath();
+    o.arc(size*0.62, size*0.42, size*0.28, 0, Math.PI*2);
+    o.fill();
+  } else if (patternId === "plus") {
+    const t = size*0.18, m = size/2, r = size*0.32;
+    o.fillRect(m - t/2, m - r, t, r*2);
+    o.fillRect(m - r, m - t/2, r*2, t);
+  } else if (patternId === "spiral") {
+    o.lineWidth = size*0.09; o.lineCap = "round";
+    o.beginPath();
+    const cx = size/2, cy = size/2;
+    for (let a = 0; a < Math.PI*3.2; a += 0.2) {
+      const rr = (a / (Math.PI*3.2)) * size*0.4;
+      const px = cx + Math.cos(a)*rr, py = cy + Math.sin(a)*rr;
+      if (a === 0) o.moveTo(px, py); else o.lineTo(px, py);
+    }
+    o.stroke();
+  } else if (patternId === "paws") {
+    o.beginPath(); o.ellipse(size*0.5, size*0.62, size*0.2, size*0.16, 0, 0, Math.PI*2); o.fill();
+    const toeR = size*0.09;
+    [[0.28,0.32],[0.44,0.2],[0.6,0.2],[0.74,0.32]].forEach(([tx,ty]) => {
+      o.beginPath(); o.arc(size*tx, size*ty, toeR, 0, Math.PI*2); o.fill();
+    });
+  } else if (patternId === "rainbow") {
+    // A fun fixed rainbow arc — ignores the selected colour on purpose.
+    const bands = ["#E63946","#F4A261","#F4B942","#7FA84F","#4A9B9B","#A374C9"];
+    const cx = size*0.5, cy = size*1.05;
+    bands.forEach((c, i) => {
+      o.strokeStyle = c;
+      o.lineWidth = size*0.09;
+      o.beginPath();
+      o.arc(cx, cy, size*0.62 - i*size*0.09, Math.PI, Math.PI*2);
+      o.stroke();
+    });
+  } else if (patternId === "confetti") {
+    const bands = ["#E63946","#F4A261","#F4B942","#7FA84F","#4A9B9B","#A374C9","#F28DA8"];
+    let seed = hex.split("").reduce((a,c) => a + c.charCodeAt(0), 0);
+    const rnd = () => { seed = (seed*9301+49297) % 233280; return seed/233280; };
+    for (let i = 0; i < 9; i++) {
+      o.fillStyle = bands[i % bands.length];
+      const px = rnd()*size, py = rnd()*size, r = size*0.06 + rnd()*size*0.05;
+      o.beginPath(); o.arc(px, py, r, 0, Math.PI*2); o.fill();
+    }
+  } else if (patternId === "clovers") {
+    const r = size*0.15;
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([dx,dy]) => {
+      o.beginPath();
+      o.arc(size/2 + dx*r*0.9, size/2 + dy*r*0.9, r, 0, Math.PI*2);
+      o.fill();
+    });
+    o.fillRect(size*0.47, size*0.5, size*0.06, size*0.35);
+  } else if (patternId === "bubbles") {
+    o.lineWidth = size*0.06;
+    [[0.35,0.4,0.22],[0.68,0.6,0.15],[0.55,0.25,0.1]].forEach(([bx,by,br]) => {
+      o.beginPath(); o.arc(size*bx, size*by, size*br, 0, Math.PI*2); o.stroke();
+    });
   }
 
   const tile = o.getImageData(0, 0, size, size);
@@ -984,6 +1079,84 @@ function animateRainReveal(finalImgData, visited, w, h) {
     else pushUndo();
   }
   setTimeout(frame, stepDelayMs);
+}
+
+// =========================================================================
+// Color Rain: colourful bubbles continuously fall from the top of the
+// canvas. Popping one (tap/touch) fills the picture wherever it lands
+// with that bubble's colour. Bubbles render on the transparent
+// number-canvas overlay so the artwork underneath is never touched.
+// =========================================================================
+function startRainBubbles() {
+  stopRainBubbles();
+  rainBubbles = [];
+  for (let i = 0; i < 4; i++) spawnRainBubble(true);
+  rainSpawnTimer = setInterval(() => {
+    if (rainBubbles.length < 7) spawnRainBubble(false);
+  }, 900);
+  const frame = () => {
+    updateRainBubbles();
+    drawRainBubbles();
+    rainAnimHandle = requestAnimationFrame(frame);
+  };
+  rainAnimHandle = requestAnimationFrame(frame);
+}
+
+function stopRainBubbles() {
+  if (rainAnimHandle) cancelAnimationFrame(rainAnimHandle);
+  if (rainSpawnTimer) clearInterval(rainSpawnTimer);
+  rainAnimHandle = null;
+  rainSpawnTimer = null;
+  rainBubbles = [];
+  if (numberCtx && numberCanvas) numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+}
+
+function spawnRainBubble(randomStart) {
+  if (!canvas) return;
+  const radius = canvas.width * (0.045 + Math.random()*0.02);
+  rainBubbles.push({
+    x: radius + Math.random() * (canvas.width - radius*2),
+    y: randomStart ? Math.random() * canvas.height : -radius,
+    radius,
+    color: PALETTE[Math.floor(Math.random()*PALETTE.length)],
+    speed: canvas.height * (0.0009 + Math.random()*0.0007)
+  });
+}
+
+function updateRainBubbles() {
+  if (!canvas) return;
+  for (const b of rainBubbles) b.y += b.speed * 16; // ~per-frame at 60fps
+  rainBubbles = rainBubbles.filter(b => b.y - b.radius < canvas.height);
+}
+
+function drawRainBubbles() {
+  if (!numberCtx || !numberCanvas) return;
+  numberCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+  rainBubbles.forEach(b => {
+    numberCtx.beginPath();
+    numberCtx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
+    numberCtx.fillStyle = b.color;
+    numberCtx.globalAlpha = 0.88;
+    numberCtx.fill();
+    numberCtx.globalAlpha = 1;
+    numberCtx.lineWidth = Math.max(2, b.radius*0.08);
+    numberCtx.strokeStyle = "rgba(255,255,255,0.8)";
+    numberCtx.stroke();
+    // small highlight for a glossy bubble look
+    numberCtx.beginPath();
+    numberCtx.arc(b.x - b.radius*0.35, b.y - b.radius*0.35, b.radius*0.28, 0, Math.PI*2);
+    numberCtx.fillStyle = "rgba(255,255,255,0.7)";
+    numberCtx.fill();
+  });
+}
+
+// Returns the topmost bubble under (x,y), or null.
+function findRainBubbleAt(x, y) {
+  for (let i = rainBubbles.length - 1; i >= 0; i--) {
+    const b = rainBubbles[i];
+    if (Math.hypot(x-b.x, y-b.y) <= b.radius * 1.15) return b;
+  }
+  return null;
 }
 
 function solidSampler(hex) {
@@ -1500,6 +1673,15 @@ function onPointerDown(e) {
       pushUndo();
       return;
     }
+    if (currentMode.variant === "rain") {
+      // Color Rain: only popping a falling bubble fills anything, using
+      // that bubble's colour, right where it was tapped.
+      const bubble = findRainBubbleAt(pt.x, pt.y);
+      if (!bubble) return;
+      rainBubbles = rainBubbles.filter(b => b !== bubble);
+      floodFill(pt.x, pt.y, solidSampler(bubble.color), true);
+      return;
+    }
     let fillColor = selectedColor;
     let matchedRegionId = null;
     let matchedNumber = null;
@@ -1520,12 +1702,12 @@ function onPointerDown(e) {
     const sampler = (currentMode.variant === "patterns")
       ? patternSampler(selectedPattern, selectedColor)
       : solidSampler(fillColor);
-    floodFill(pt.x, pt.y, sampler, currentMode.variant === "rain");
+    floodFill(pt.x, pt.y, sampler, false);
     if (matchedRegionId) {
       clearNumberLabel(matchedRegionId);
       markNumberRegionFilled(matchedNumber);
     }
-    if (currentMode.variant !== "rain") pushUndo();
+    pushUndo();
   } else if (tool === "sticker") {
     placeSticker(pt.x, pt.y);
     pushUndo();
