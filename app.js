@@ -18,22 +18,27 @@
 // ---------- Palettes ----------
 // Derived from the actual colours used across the reference illustrations
 // (k-means colour extraction over all 38 coloured pages), rounded out with
-// the vivid hibiscus/orchid/toucan accent tones that appear throughout.
+// the vivid hibiscus/orchid/toucan accent tones that appear throughout,
+// plus extra shades in every family for real colouring variety.
 const PALETTE = [
-  "#E63946", "#F4845F", "#F4A261", "#F4B942", "#F2C14E",
-  "#A374C9", "#F28DA8", "#7EC8E3", "#4A9B9B", "#6B7C4C",
-  "#4B5A3B", "#3C4C32", "#8C6038", "#DBAB74", "#A9A085",
-  "#D9D4AC", "#83ABA7", "#5F8C91", "#324D51", "#8B5E3C",
-  "#FFFFFF", "#2D2A26"
+  "#B3232E", "#E63946", "#FF9B85", "#F4845F", "#D97B3F", "#F4A261",
+  "#F4B942", "#F2C14E", "#FDE49B",
+  "#7FA84F", "#6B7C4C", "#4B5A3B", "#3C4C32", "#26331E", "#A8D5BA",
+  "#22405A", "#324D51", "#5F8C91", "#4A9B9B", "#83ABA7", "#7EC8E3", "#C7E6F0",
+  "#5B3A6E", "#A374C9", "#C9B6E4",
+  "#E85D8A", "#F28DA8", "#FBD8E0",
+  "#5C3A21", "#8C6038", "#8B5E3C", "#DBAB74", "#E8C9A0", "#A9A085", "#D9D4AC",
+  "#4A4642", "#2D2A26", "#D8D5CC", "#FFFFFF"
 ];
 const BIG_PALETTE = [
-  "#E63946", "#F4845F", "#F4B942", "#6B7C4C", "#4A9B9B",
+  "#E63946", "#F4845F", "#F4B942", "#7FA84F", "#4A9B9B",
   "#7EC8E3", "#A374C9", "#F28DA8", "#8C6038", "#FFFFFF",
   "#2D2A26", "#DBAB74"
 ];
 const NEON_PALETTE = [
   "#FF2E63", "#FF6B00", "#FFF200", "#39FF14", "#00F5D4",
-  "#00B4FF", "#7B2FFF", "#FF00E5", "#FFFFFF"
+  "#00B4FF", "#7B2FFF", "#FF00E5", "#FF5CAA", "#B3FF00",
+  "#00FFB3", "#5CE1FF", "#FFFFFF"
 ];
 const PASTEL_PALETTE = [
   "#F6BD60", "#F7EDE2", "#F5CAC3", "#84A59D", "#F28482",
@@ -76,25 +81,25 @@ const PAGE_CATEGORY = {
 const MODES = [
   { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — a dozen bright colours",
     thumb:"page-020.png", tools:["fill"], palette:BIG_PALETTE, variant:null },
-  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"Paint by moving your finger — plus crayon, glitter & stickers",
-    thumb:"page-028.png", tools:["brush","fill","eraser","crayon","glitter","sticker"],
+  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"7 pencils — crayon, marker, pastel, chalk, glitter, rainbow & bugs",
+    thumb:"page-028.png", tools:["brush","fill","eraser","crayon","marker","pastel","chalk","glitter","rainbow","motif","sticker"],
     palette:PALETTE, variant:null, containedBrush:true },
-  { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page",
-    thumb:null, tools:["brush","eraser"], palette:PALETTE, variant:"blank" },
-  { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Neon colours on a dark background", cardClass:"glow",
-    thumb:"page-032.png", tools:["fill","brush","eraser"], palette:NEON_PALETTE, variant:"glow" },
+  { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page — the full pencil box",
+    thumb:null, tools:["brush","eraser","fill","crayon","marker","pastel","chalk","glitter","rainbow","motif"], palette:PALETTE, variant:"blank" },
+  { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Neon colours, crayon & glitter on a dark background", cardClass:"glow",
+    thumb:"page-032.png", tools:["fill","brush","eraser","crayon","marker","glitter","rainbow"], palette:NEON_PALETTE, variant:"glow" },
   { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill",
     thumb:"page-014.png", tools:["fill","brush"], palette:PALETTE, variant:"numbered" },
   { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Wipe away the mist to reveal the colours underneath",
     thumb:"page-036-colored.jpg", tools:["brush","eraser"], palette:[], variant:"watercolor" },
-  { id:"doodle",    icon:"🖊️", name:"Doodle",       desc:"Free-form scribble over the picture",
-    thumb:"page-021.png", tools:["brush"], palette:PALETTE, variant:"doodle" },
+  { id:"doodle",    icon:"🖊️", name:"Doodle",       desc:"Free-form scribble — crayon, marker, glitter, rainbow & bugs",
+    thumb:"page-021.png", tools:["brush","crayon","marker","glitter","rainbow","motif"], palette:PALETTE, variant:"doodle" },
   { id:"pixelart",  icon:"🧩", name:"Pixel Art",    desc:"Chunky, blocky pixel-style colouring",
     thumb:"page-011.png", tools:["fill","brush"], palette:PALETTE, variant:"pixel" },
   { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Watch colour pour into place",
     thumb:"page-034.png", tools:["fill"], palette:PALETTE, variant:"rain" },
-  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more", cardClass:"funpaint",
-    thumb:"page-006.png", tools:["fill","brush"], palette:PALETTE, variant:"patterns" }
+  { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more, or draw rainbow & bug trails", cardClass:"funpaint",
+    thumb:"page-006.png", tools:["fill","brush","rainbow","motif"], palette:PALETTE, variant:"patterns" }
 ];
 
 // =========================================================================
@@ -198,6 +203,10 @@ let numberRegionCount = {};  // palette number -> how many regions use it
 let numberFilledCount = {};  // palette number -> how many of those are filled
 
 let activeMask = null;        // Uint8Array w*h for containedBrush clipping
+let rainbowHue = 0;           // advances as the rainbow pencil draws
+let lastMotifPt = null;       // last spot a motif icon was stamped
+let motifIndex = 0;
+const MOTIF_ICONS = ["🐞","🐛","🦋","⭐","🌸"];
 let hasUnsavedChanges = false;
 let pendingLeaveAction = null;
 let revealImageData = null;   // Water Color: the hidden fully-coloured picture
@@ -307,8 +316,9 @@ function buildFilterChipsOnce() {
   const statusRow = document.getElementById("status-filter");
   const categoryRow = document.getElementById("category-filter");
 
+  // No "All Pages" chip — tapping the already-active status chip
+  // deselects it (back to unfiltered) instead.
   [
-    { id: "all", label: "All Pages" },
     { id: "started", label: "▶️ Continue Colouring" },
     { id: "new", label: "✨ Not Started" }
   ].forEach(s => {
@@ -316,9 +326,10 @@ function buildFilterChipsOnce() {
     chip.className = "filter-chip" + (s.id === statusFilter ? " active" : "");
     chip.textContent = s.label;
     chip.addEventListener("click", () => {
-      statusFilter = s.id;
+      const alreadyActive = statusFilter === s.id;
+      statusFilter = alreadyActive ? "all" : s.id;
       statusRow.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
-      chip.classList.add("active");
+      if (!alreadyActive) chip.classList.add("active");
       renderGallery();
     });
     statusRow.appendChild(chip);
@@ -397,7 +408,7 @@ function brokenThumb() {
 
 // ---------- Colouring view setup ----------
 function setupSidebarForMode() {
-  const allTools = ["fill","brush","eraser","crayon","glitter","sticker"];
+  const allTools = ["fill","brush","eraser","crayon","marker","pastel","chalk","glitter","rainbow","motif","sticker"];
   allTools.forEach(t => {
     const btn = document.getElementById(`${t}-tool`);
     btn.hidden = !currentMode.tools.includes(t);
@@ -640,6 +651,21 @@ function canvasPoint(evt) {
 function hexToRGBA(hex) {
   const v = parseInt(hex.slice(1), 16);
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255, 255];
+}
+
+function hslToHex(h, s, l) {
+  const c = (1 - Math.abs(2*l - 1)) * s;
+  const x = c * (1 - Math.abs((h/60) % 2 - 1));
+  const m = l - c/2;
+  let r,g,b;
+  if (h < 60) [r,g,b] = [c,x,0];
+  else if (h < 120) [r,g,b] = [x,c,0];
+  else if (h < 180) [r,g,b] = [0,c,x];
+  else if (h < 240) [r,g,b] = [0,x,c];
+  else if (h < 300) [r,g,b] = [x,0,c];
+  else [r,g,b] = [c,0,x];
+  const R = Math.round((r+m)*255), G = Math.round((g+m)*255), B = Math.round((b+m)*255);
+  return `#${R.toString(16).padStart(2,"0")}${G.toString(16).padStart(2,"0")}${B.toString(16).padStart(2,"0")}`;
 }
 
 // ---------- Pattern tiles ----------
@@ -1252,6 +1278,59 @@ function brushStroke(x, y) {
     ctx.globalAlpha = 1;
     return;
   }
+  if (tool === "marker") {
+    // Bold, flat, felt-tip look — solid colour, slightly translucent so
+    // overlapping strokes darken like a real marker.
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = selectedColor;
+    ctx.beginPath(); ctx.arc(x, y, brushSize/2 * 1.1, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (tool === "pastel") {
+    // Soft chalky bloom — a radial gradient that fades to transparent,
+    // like a pastel stick rubbed on paper.
+    const [r,g,b] = hexToRGBA(selectedColor);
+    const radius = brushSize * 1.4;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, `rgba(${r},${g},${b},0.55)`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},0.3)`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
+    return;
+  }
+  if (tool === "chalk") {
+    // Dusty, grainy texture — lots of tiny low-opacity specks.
+    ctx.globalAlpha = 0.45;
+    for (let i = 0; i < 16; i++) {
+      const ox = x + (Math.random()-0.5)*brushSize*1.3;
+      const oy = y + (Math.random()-0.5)*brushSize*1.3;
+      ctx.fillStyle = selectedColor;
+      ctx.beginPath(); ctx.arc(ox, oy, Math.max(0.8, brushSize*0.06), 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (tool === "rainbow") {
+    // Colour cycles smoothly along the stroke instead of using the
+    // selected swatch — a flowing rainbow trail.
+    ctx.fillStyle = hslToHex(rainbowHue % 360, 0.85, 0.55);
+    rainbowHue += 7;
+    ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
+    return;
+  }
+  if (tool === "motif") {
+    // Leaves a trail of little bug/star/flower icons instead of colour.
+    if (!lastMotifPt || Math.hypot(x-lastMotifPt.x, y-lastMotifPt.y) > brushSize*1.2) {
+      ctx.font = `${Math.max(14, brushSize*1.8)}px serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(MOTIF_ICONS[motifIndex % MOTIF_ICONS.length], x, y);
+      motifIndex++;
+      lastMotifPt = { x, y };
+    }
+    return;
+  }
   if (currentMode.variant === "pixel") {
     const cell = Math.max(8, brushSize);
     const gx = Math.floor(x/cell)*cell, gy = Math.floor(y/cell)*cell;
@@ -1284,7 +1363,7 @@ function brushLine(from, to) {
     brushStroke(to.x, to.y);
     return;
   }
-  if (tool === "glitter" || tool === "crayon") {
+  if (["glitter","crayon","marker","pastel","chalk","rainbow","motif"].includes(tool)) {
     brushStroke(to.x, to.y);
     return;
   }
@@ -1336,7 +1415,7 @@ function wireControls() {
     img.src = currentPage.src;
   });
 
-  ["fill","brush","eraser","crayon","glitter","sticker"].forEach(t => {
+  ["fill","brush","eraser","crayon","marker","pastel","chalk","glitter","rainbow","motif","sticker"].forEach(t => {
     document.getElementById(`${t}-tool`).addEventListener("click", () => setTool(t));
   });
 
@@ -1453,6 +1532,7 @@ function onPointerDown(e) {
   } else {
     drawing = true;
     lastPt = pt;
+    if (tool === "motif") lastMotifPt = null;
     if (currentMode.containedBrush && tool === "brush") {
       activeMask = computeRegionMask(pt.x, pt.y);
       if (activeMask) maskedDab(pt.x, pt.y, brushSize/2, selectedColor, 1);
