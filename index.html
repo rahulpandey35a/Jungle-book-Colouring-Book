@@ -6,33 +6,50 @@
 <title>Jungle Colouring Book</title>
 <meta name="theme-color" content="#1B4332">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon-192.png">
+<link rel="icon" href="icon-192.png">
 
 <!-- iPad standalone app support -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Jungle Colouring">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<!-- iPad splash screens (add to home screen launch image) -->
-<link rel="apple-touch-startup-image" href="icons/icon-512.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-startup-image" href="icon-512.png">
 
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ===== GALLERY VIEW ===== -->
-<section id="gallery-view" class="view active">
+<!-- ===== MODE DASHBOARD (landing screen) ===== -->
+<section id="mode-view" class="view active">
   <header class="gallery-header">
     <div class="leaf-decor leaf-left" aria-hidden="true">🌿</div>
     <h1>Jungle Colouring Book</h1>
     <div class="leaf-decor leaf-right" aria-hidden="true">🌿</div>
   </header>
+  <p class="subtitle">Choose how you want to play!</p>
+  <div id="mode-grid" class="mode-grid"></div>
+</section>
+
+<!-- ===== GALLERY VIEW (category + page picker for the chosen mode) ===== -->
+<section id="gallery-view" class="view">
+  <header class="color-header">
+    <button id="gallery-back-btn" class="icon-btn" aria-label="Back to modes">&#8592;</button>
+    <span id="gallery-mode-label" class="page-label">Colour Fill</span>
+    <span class="icon-btn icon-btn-ghost" aria-hidden="true">&nbsp;</span>
+  </header>
   <p class="subtitle">Pick a page and start colouring!</p>
+
+  <div class="filter-row" id="status-filter"></div>
+  <div class="filter-row" id="category-filter"></div>
+
   <div id="gallery-grid" class="gallery-grid"></div>
   <p id="empty-msg" class="empty-msg" hidden>
     No pages found yet. Drop your jungle-book PNGs into the repo root,
     named <code>page-001.png</code>, <code>page-002.png</code>, and so on.
+  </p>
+  <p id="no-match-msg" class="empty-msg" hidden>
+    No pages in this category yet — try a different tab above!
   </p>
 </section>
 
@@ -50,12 +67,26 @@
     </div>
 
     <aside class="sidebar">
-      <div class="tool-row">
-        <button id="fill-tool" class="tool-btn active" aria-label="Fill tool">
+      <div class="tool-row" id="tool-row-1">
+        <button id="fill-tool" data-tool="fill" class="tool-btn" aria-label="Fill tool">
           <span class="tool-icon">🪣</span><span class="tool-name">Fill</span>
         </button>
-        <button id="brush-tool" class="tool-btn" aria-label="Brush tool">
+        <button id="brush-tool" data-tool="brush" class="tool-btn" aria-label="Brush tool">
           <span class="tool-icon">🖌️</span><span class="tool-name">Brush</span>
+        </button>
+        <button id="eraser-tool" data-tool="eraser" class="tool-btn" aria-label="Eraser tool">
+          <span class="tool-icon">🧽</span><span class="tool-name">Eraser</span>
+        </button>
+      </div>
+      <div class="tool-row" id="tool-row-2">
+        <button id="crayon-tool" data-tool="crayon" class="tool-btn" aria-label="Crayon tool">
+          <span class="tool-icon">🖍️</span><span class="tool-name">Crayon</span>
+        </button>
+        <button id="glitter-tool" data-tool="glitter" class="tool-btn" aria-label="Glitter tool">
+          <span class="tool-icon">✨</span><span class="tool-name">Glitter</span>
+        </button>
+        <button id="sticker-tool" data-tool="sticker" class="tool-btn" aria-label="Sticker tool">
+          <span class="tool-icon">⭐</span><span class="tool-name">Sticker</span>
         </button>
       </div>
 
@@ -64,13 +95,20 @@
         <input type="range" id="brush-size" min="4" max="50" value="16">
       </div>
 
+      <div class="sticker-row" id="sticker-row" hidden></div>
+
       <div class="palette" id="palette"></div>
 
       <div class="tool-row">
         <button id="undo-btn" class="tool-btn" aria-label="Undo">
           <span class="tool-icon">↩️</span><span class="tool-name">Undo</span>
         </button>
-        <button id="save-btn" class="tool-btn" aria-label="Save picture">
+        <button id="redo-btn" class="tool-btn" aria-label="Redo">
+          <span class="tool-icon">↪️</span><span class="tool-name">Redo</span>
+        </button>
+      </div>
+      <div class="tool-row">
+        <button id="save-btn" class="tool-btn tool-btn-wide" aria-label="Save picture">
           <span class="tool-icon">💾</span><span class="tool-name">Save</span>
         </button>
       </div>
@@ -79,6 +117,12 @@
 </section>
 
 <div id="toast" class="toast" hidden></div>
+<div id="celebration" class="celebration" hidden>
+  <div class="celebration-card">
+    <div class="celebration-emoji">🎉</div>
+    <div class="celebration-text">Great job!</div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

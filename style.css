@@ -59,6 +59,29 @@ html, body {
   font-size: 17px;
 }
 
+/* ---------- Filter chips ---------- */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 20px;
+}
+.filter-chip {
+  border: none;
+  background: #eef1ea;
+  color: var(--jungle-green);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.filter-chip.active {
+  background: var(--leaf-green);
+  color: white;
+}
+
 .gallery-grid {
   flex: 1;
   overflow-y: auto;
@@ -87,7 +110,7 @@ html, body {
 .page-card img {
   width: 100%;
   aspect-ratio: 3/4;
-  object-fit: cover;
+  object-fit: contain;
   background: #f4f4f0;
   display: block;
 }
@@ -252,4 +275,145 @@ html, body {
   font-weight: 700;
   font-size: 14px;
   z-index: 50;
+}
+
+.tool-btn-wide { flex: 1; }
+
+/* ---------- Save celebration ---------- */
+.celebration {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(27,67,50,0.55);
+  z-index: 100;
+  animation: celebration-fade 1.5s ease forwards;
+  pointer-events: none;
+}
+.celebration-card {
+  background: var(--cream);
+  border-radius: 28px;
+  padding: 34px 46px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  animation: celebration-pop 0.5s cubic-bezier(.34,1.56,.64,1);
+}
+.celebration-emoji {
+  font-size: 64px;
+  animation: celebration-spin 1s ease;
+}
+.celebration-text {
+  margin-top: 8px;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--jungle-green);
+}
+@keyframes celebration-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes celebration-spin {
+  0% { transform: rotate(-15deg) scale(0.6); }
+  50% { transform: rotate(10deg) scale(1.15); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+@keyframes celebration-fade {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.confetti-piece {
+  position: fixed;
+  top: -40px;
+  font-size: 26px;
+  z-index: 101;
+  animation: confetti-fall linear forwards;
+  pointer-events: none;
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0.9; }
+}
+
+/* ---------- Mode dashboard ---------- */
+.mode-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+  padding: 24px 32px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.mode-card {
+  background: #fff;
+  border: 4px solid var(--leaf-green);
+  border-radius: 24px;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 6px 0 rgba(27,67,50,0.15);
+  transition: transform 0.12s ease;
+}
+.mode-card:active { transform: scale(0.97); }
+.mode-card .mode-icon { font-size: 56px; display: block; margin-bottom: 10px; }
+.mode-card .mode-name { font-weight: 800; font-size: 21px; color: var(--jungle-green); }
+.mode-card .mode-desc { font-size: 13px; color: #6b6a63; margin-top: 6px; line-height: 1.4; }
+.mode-card.glow { background: #14171f; border-color: #6c4fd6; }
+.mode-card.glow .mode-name { color: #f2e9ff; }
+.mode-card.glow .mode-desc { color: #b9aee0; }
+.mode-card.funpaint { background: var(--gold); border-color: var(--coral); }
+
+.icon-btn-ghost { background: transparent; width: 52px; }
+
+/* ---------- Sticker row ---------- */
+.sticker-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.sticker-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  border-radius: 12px;
+  font-size: 26px;
+  padding: 8px 0;
+}
+.sticker-btn.selected {
+  background: var(--coral);
+}
+
+/* Glow-pen colour view variant */
+.color-view-glow .canvas-wrap { background: #14171f; }
+.color-view-glow .sidebar { background: #14171f; }
+.color-view-glow #draw-canvas { box-shadow: 0 0 40px rgba(150,100,255,0.35); }
+
+/* ---------- Numbered / pattern swatches ---------- */
+.swatch { position: relative; }
+.swatch-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+.pattern-swatch {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.swatch.selected-color {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold);
 }
