@@ -554,3 +554,94 @@ html, body {
 .leave-confirm[hidden] {
   display: none !important;
 }
+
+/* ---------- Balloons ---------- */
+.balloon {
+  position: fixed;
+  top: -70px;
+  font-size: 58px;
+  z-index: 150;
+  cursor: pointer;
+  animation-name: balloon-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
+}
+@keyframes balloon-fall {
+  from { transform: translateY(-70px) rotate(-4deg); }
+  50%  { transform: translateY(50vh) rotate(4deg); }
+  to   { transform: translateY(115vh) rotate(-4deg); }
+}
+.balloon-pop {
+  animation: balloon-pop-anim 0.22s ease forwards !important;
+}
+@keyframes balloon-pop-anim {
+  to { transform: scale(1.8); opacity: 0; }
+}
+
+/* ---------- My Rewards nav button + gallery ---------- */
+.rewards-nav-btn {
+  display: block;
+  margin: 12px auto 0;
+  background: var(--gold);
+  color: var(--jungle-green);
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 4px 0 rgba(27,67,50,0.15);
+}
+.rewards-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 16px;
+  padding: 20px 24px 40px;
+  -webkit-overflow-scrolling: touch;
+}
+.reward-card {
+  background: #fff;
+  border: 3px solid var(--leaf-green);
+  border-radius: 16px;
+  font-size: 36px;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 0 rgba(27,67,50,0.12);
+}
+
+/* ---------- Reward picker ---------- */
+.reward-card-wrap { max-width: 380px; }
+.reward-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  justify-content: center;
+}
+.reward-tab {
+  border: none;
+  background: #eef1ea;
+  color: var(--jungle-green);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+.reward-tab.active { background: var(--leaf-green); color: white; }
+.reward-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.reward-option {
+  background: #eef1ea;
+  border: none;
+  border-radius: 14px;
+  font-size: 30px;
+  aspect-ratio: 1;
+}
+.reward-option:active { background: var(--gold); }

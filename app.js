@@ -239,10 +239,15 @@ init();
 
 async function init() {
   preventPinchZoomStuck();
+  document.addEventListener("pointerdown", function firstGesture() {
+    playSound("appstart");
+    document.removeEventListener("pointerdown", firstGesture);
+  }, { once: true });
   await initStorage();
   await preflightPages();
   buildModeGrid();
   wireControls();
+  wireRewardPicker();
   registerServiceWorker();
 }
 
@@ -567,7 +572,9 @@ function openPage(p) {
   numberBuilding = false; numberBuildToken++;
   activeMask = null;
   revealCelebrated = false;
+  pageCelebratedComplete = false;
   stopRainBubbles();
+  playSound("pageopen");
 
   const saved = getSave(currentMode.id, p.num);
   const img = new Image();
@@ -627,8 +634,17 @@ function openBlankCanvas() {
 function invertToGlow() {
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const d = imgData.data;
+  // Deep navy background (not flat black) + bright cyan glow outlines,
+  // blended smoothly by original darkness so anti-aliased linework stays
+  // crisp — this keeps small details (like eyes) clearly visible instead
+  // of disappearing into a flat black canvas.
+  const bgR=16, bgG=20, bgB=46, lnR=170, lnG=235, lnB=255;
   for (let i = 0; i < d.length; i += 4) {
-    d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2];
+    const v = (d[i] + d[i+1] + d[i+2]) / 3;
+    const t = 1 - v/255; // 1 = original outline (dark), 0 = original background (light)
+    d[i]   = bgR + (lnR-bgR)*t;
+    d[i+1] = bgG + (lnG-bgG)*t;
+    d[i+2] = bgB + (lnB-bgB)*t;
   }
   ctx.putImageData(imgData, 0, 0);
 }
@@ -1001,6 +1017,14 @@ function markNumberRegionFilled(n) {
   if (numberFilledCount[n] >= total) {
     hidePaletteSwatch(n);
   }
+  const allNumbers = Object.keys(numberRegionCount);
+  const allDone = allNumbers.length > 0 && allNumbers.every(
+    k => (numberFilledCount[k] || 0) >= numberRegionCount[k]
+  );
+  if (allDone && !pageCelebratedComplete) {
+    pageCelebratedComplete = true;
+    triggerPictureComplete();
+  }
 }
 
 function hidePaletteSwatch(n) {
@@ -1103,7 +1127,7 @@ function animateRainReveal(finalImgData, visited, w, h) {
     }
     ctx.putImageData(out, 0, 0);
     if (cutoff < h) setTimeout(frame, stepDelayMs);
-    else pushUndo();
+    else { pushUndo(); checkPictureCompletion(); }
   }
   setTimeout(frame, stepDelayMs);
 }
@@ -1442,7 +1466,8 @@ function maybeCelebrateReveal() {
   if (revealCelebrated || !revealedTotal) return;
   if (revealedCount / revealedTotal > 0.98) {
     revealCelebrated = true;
-    celebrate();
+    pageCelebratedComplete = true;
+    triggerPictureComplete();
   }
 }
 
@@ -1457,7 +1482,7 @@ function brushStroke(x, y) {
     return;
   }
   if (tool === "eraser") {
-    ctx.fillStyle = (currentMode.variant === "glow") ? "#000000" : "#ffffff";
+    ctx.fillStyle = (currentMode.variant === "glow") ? "#10142e" : "#ffffff";
     ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2); ctx.fill();
     return;
   }
@@ -1573,7 +1598,7 @@ function brushLine(from, to) {
     return;
   }
   ctx.strokeStyle = (tool === "eraser")
-    ? ((currentMode.variant === "glow") ? "#000000" : "#ffffff")
+    ? ((currentMode.variant === "glow") ? "#10142e" : "#ffffff")
     : selectedColor;
   ctx.lineWidth = brushSize;
   ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -1740,6 +1765,7 @@ function onPointerDown(e) {
       markNumberRegionFilled(matchedNumber);
     }
     pushUndo();
+    checkPictureCompletion();
   } else if (tool === "sticker") {
     placeSticker(pt.x, pt.y);
     pushUndo();
@@ -1772,6 +1798,7 @@ function onPointerUp() {
     drawing = false;
     activeMask = null;
     pushUndo();
+    checkPictureCompletion();
   }
 }
 
@@ -1785,16 +1812,71 @@ function showToast(msg) {
 }
 let celebrationHideTimer = null;
 let confettiTimers = [];
+let balloonTimers = [];
+let pageCelebratedComplete = false; // guards against re-triggering on the same page
+
+// =========================================================================
+// Sounds — synthesized with the Web Audio API so no sound files are
+// needed (keeps the PWA fully offline). Mobile browsers require a user
+// gesture before audio can play; since every screen here is reached via
+// a tap, the context unlocks naturally on first interaction.
+// =========================================================================
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+function tone(freq, start, dur, type, gain) {
+  const ac = getAudioCtx();
+  if (!ac) return;
+  try {
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type || "sine";
+    osc.frequency.value = freq;
+    const t0 = ac.currentTime + start;
+    g.gain.setValueAtTime(gain == null ? 0.15 : gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  } catch (e) { /* ignore */ }
+}
+function playSound(name) {
+  if (!getAudioCtx()) return;
+  if (name === "appstart") {
+    tone(523,0,0.16); tone(659,0.14,0.16); tone(784,0.28,0.3);
+  } else if (name === "pageopen") {
+    tone(659,0,0.12); tone(880,0.09,0.16);
+  } else if (name === "complete") {
+    tone(523,0,0.15); tone(659,0.12,0.15); tone(784,0.24,0.15); tone(1047,0.36,0.4);
+  } else if (name === "pop") {
+    tone(320,0,0.05,"square",0.12); tone(180,0.05,0.09,"square",0.1);
+  } else if (name === "reward") {
+    tone(784,0,0.1); tone(988,0.1,0.1); tone(1319,0.2,0.32);
+  } else if (name === "save") {
+    tone(659,0,0.1); tone(880,0.1,0.18);
+  }
+}
+
+// ---------- Regular per-save celebration (small, quick) ----------
 function celebrate() {
   const el = document.getElementById("celebration");
   el.hidden = false;
-  spawnConfetti();
+  document.getElementById("celebration-text").textContent = "Great job!";
+  spawnConfetti(18);
+  playSound("save");
   clearTimeout(celebrationHideTimer);
   celebrationHideTimer = setTimeout(() => { el.hidden = true; }, 1500);
 }
-function spawnConfetti() {
+
+function spawnConfetti(count) {
   const emojis = ["🎉","✨","🌟","🎊","💚"];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < (count || 18); i++) {
     const piece = document.createElement("div");
     piece.className = "confetti-piece";
     piece.textContent = emojis[Math.floor(Math.random()*emojis.length)];
@@ -1805,6 +1887,48 @@ function spawnConfetti() {
     confettiTimers.push(setTimeout(() => piece.remove(), 2200));
   }
 }
+
+// ---------- Balloons (Color Rain–style, but poppable for fun) ----------
+function spawnBalloons() {
+  const colors = ["#FF6B6B","#4ECDC4","#FFD166","#A374C9","#7EC8E3","#F28DA8"];
+  for (let i = 0; i < 2; i++) {
+    const b = document.createElement("div");
+    b.className = "balloon";
+    b.textContent = "🎈";
+    b.style.left = (15 + Math.random()*60 + i*10) + "vw";
+    b.style.color = colors[Math.floor(Math.random()*colors.length)];
+    b.style.animationDuration = (4 + Math.random()*1.5) + "s";
+    const pop = () => popBalloon(b);
+    b.addEventListener("click", pop);
+    b.addEventListener("touchstart", (e) => { e.preventDefault(); pop(); }, { passive: false });
+    document.body.appendChild(b);
+    balloonTimers.push(setTimeout(() => { if (b.parentNode) b.remove(); }, 6500));
+  }
+}
+function popBalloon(b) {
+  if (b.dataset.popped) return;
+  b.dataset.popped = "1";
+  playSound("pop");
+  b.classList.add("balloon-pop");
+  setTimeout(() => b.remove(), 220);
+}
+
+// ---------- Full picture-completion celebration ----------
+function triggerPictureComplete() {
+  cancelCelebration();
+  playSound("complete");
+  const el = document.getElementById("celebration");
+  el.hidden = false;
+  document.getElementById("celebration-text").textContent = "Congratulations! \ud83c\udf89";
+  spawnConfetti(30);
+  spawnBalloons();
+  clearTimeout(celebrationHideTimer);
+  celebrationHideTimer = setTimeout(() => {
+    el.hidden = true;
+    openRewardPicker();
+  }, 2000);
+}
+
 // Called whenever we navigate away, so a still-animating celebration from
 // the page you just left can never bleed into the next screen.
 function cancelCelebration() {
@@ -1813,6 +1937,138 @@ function cancelCelebration() {
   confettiTimers.forEach(clearTimeout);
   confettiTimers = [];
   document.querySelectorAll(".confetti-piece").forEach(p => p.remove());
+  balloonTimers.forEach(clearTimeout);
+  balloonTimers = [];
+  document.querySelectorAll(".balloon").forEach(b => b.remove());
+}
+
+// ---------- Generic "is this picture basically finished?" detector ----------
+// Works for every fill/paint mode by sampling a small downscaled copy of
+// the canvas and checking how much of the fillable area is no longer the
+// original background colour. Cheap enough to run after every stroke.
+function checkPictureCompletion() {
+  if (!canvas || !currentMode || pageCelebratedComplete) return;
+  if (["blank","watercolor"].includes(currentMode.variant)) return; // handled elsewhere
+  const w = canvas.width, h = canvas.height;
+  const size = 56;
+  const scale = size / Math.max(w, h);
+  const sw = Math.max(1, Math.round(w*scale)), sh = Math.max(1, Math.round(h*scale));
+  const off = document.createElement("canvas");
+  off.width = sw; off.height = sh;
+  const octx = off.getContext("2d");
+  octx.drawImage(canvas, 0, 0, sw, sh);
+  const data = octx.getImageData(0, 0, sw, sh).data;
+  const isGlow = currentMode.variant === "glow";
+  let total = 0, colored = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const bright = (r+g+b)/3;
+    if (isGlow) { if (bright > 195) continue; } else { if (bright < 60) continue; }
+    total++;
+    if (isGlow) {
+      const dist = Math.abs(r-16) + Math.abs(g-20) + Math.abs(b-46);
+      if (dist > 60) colored++;
+    } else {
+      if (bright < 235 || (Math.max(r,g,b) - Math.min(r,g,b)) > 20) colored++;
+    }
+  }
+  if (total === 0) return;
+  if (colored / total > 0.88) {
+    pageCelebratedComplete = true;
+    triggerPictureComplete();
+  }
+}
+
+// =========================================================================
+// Rewards — after finishing a picture, the kid picks one Stamp, Sticker,
+// or Gift design. Saved to IndexedDB so they can revisit their collection.
+// =========================================================================
+const REWARD_DESIGNS = {
+  stamp:   ["🏅","🎖️","🏆","✅","🥇","🔰","🥈","🥉"],
+  sticker: ["⭐","🌟","💫","✨","🦄","🌈","🐝","🌺","🦋","☀️"],
+  gift:    ["🎁","🎀","🧸","🍭","🍬","🎂","🧁","🪅"]
+};
+let rewardTab = "stamp";
+let rewardContext = null; // {mode, pageNum} for the picture just finished
+
+function rewardKey(mode, pageNum) { return `reward-${mode}-page-${pageNum}`; }
+
+async function saveReward(mode, pageNum, category, emoji) {
+  await idbSet(rewardKey(mode, pageNum), JSON.stringify({ category, emoji, at: Date.now() }));
+}
+async function getAllRewards() {
+  const all = await idbGetAll();
+  const rewards = [];
+  for (const [key, val] of all) {
+    if (key.startsWith("reward-")) {
+      try { rewards.push({ key, ...JSON.parse(val) }); } catch (e) {}
+    }
+  }
+  rewards.sort((a,b) => b.at - a.at);
+  return rewards;
+}
+
+function openRewardPicker() {
+  if (!currentPage || currentPage.num === "draw") return;
+  rewardContext = { mode: currentMode.id, pageNum: currentPage.num };
+  rewardTab = "stamp";
+  renderRewardPicker();
+  document.getElementById("reward-picker").hidden = false;
+}
+
+function renderRewardPicker() {
+  document.querySelectorAll(".reward-tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === rewardTab);
+  });
+  const grid = document.getElementById("reward-grid");
+  grid.innerHTML = "";
+  REWARD_DESIGNS[rewardTab].forEach(emoji => {
+    const btn = document.createElement("button");
+    btn.className = "reward-option";
+    btn.textContent = emoji;
+    btn.addEventListener("click", () => claimReward(rewardTab, emoji));
+    grid.appendChild(btn);
+  });
+}
+
+async function claimReward(category, emoji) {
+  if (!rewardContext) return;
+  await saveReward(rewardContext.mode, rewardContext.pageNum, category, emoji);
+  playSound("reward");
+  document.getElementById("reward-picker").hidden = true;
+  showToast(`${emoji} added to your rewards!`);
+  rewardContext = null;
+}
+
+function wireRewardPicker() {
+  document.querySelectorAll(".reward-tab").forEach(t => {
+    t.addEventListener("click", () => { rewardTab = t.dataset.tab; renderRewardPicker(); });
+  });
+  document.getElementById("reward-skip-btn").addEventListener("click", () => {
+    document.getElementById("reward-picker").hidden = true;
+    rewardContext = null;
+  });
+  document.getElementById("my-rewards-btn").addEventListener("click", openRewardsGallery);
+  document.getElementById("rewards-back-btn").addEventListener("click", () => {
+    document.getElementById("rewards-view").classList.remove("active");
+    modeView.classList.add("active");
+  });
+}
+
+async function openRewardsGallery() {
+  const rewards = await getAllRewards();
+  const grid = document.getElementById("rewards-grid");
+  const empty = document.getElementById("rewards-empty");
+  grid.innerHTML = "";
+  empty.hidden = rewards.length !== 0;
+  rewards.forEach(r => {
+    const card = document.createElement("div");
+    card.className = "reward-card";
+    card.textContent = r.emoji;
+    grid.appendChild(card);
+  });
+  modeView.classList.remove("active");
+  document.getElementById("rewards-view").classList.add("active");
 }
 
 // ---------- PWA ----------

@@ -28,7 +28,21 @@
     <div class="leaf-decor leaf-right" aria-hidden="true">🌿</div>
   </header>
   <p class="subtitle">Choose how you want to play!</p>
+  <button id="my-rewards-btn" class="rewards-nav-btn">🏆 My Rewards</button>
   <div id="mode-grid" class="mode-grid"></div>
+</section>
+
+<!-- ===== REWARDS GALLERY ===== -->
+<section id="rewards-view" class="view">
+  <header class="color-header">
+    <button id="rewards-back-btn" class="icon-btn" aria-label="Back to home">&#8592;</button>
+    <span class="page-label">🏆 My Rewards</span>
+    <span class="icon-btn icon-btn-ghost" aria-hidden="true">&nbsp;</span>
+  </header>
+  <div id="rewards-grid" class="rewards-grid"></div>
+  <p id="rewards-empty" class="empty-msg" hidden>
+    No rewards yet — finish colouring a picture to earn your first one!
+  </p>
 </section>
 
 <!-- ===== GALLERY VIEW (category + page picker for the chosen mode) ===== -->
@@ -148,7 +162,7 @@
 <div id="celebration" class="celebration" hidden>
   <div class="celebration-card">
     <div class="celebration-emoji">🎉</div>
-    <div class="celebration-text">Great job!</div>
+    <div id="celebration-text" class="celebration-text">Great job!</div>
   </div>
 </div>
 
@@ -161,6 +175,20 @@
       <button id="leave-discard-btn" class="leave-btn leave-btn-discard">Leave Without Saving</button>
       <button id="leave-cancel-btn" class="leave-btn leave-btn-cancel">Keep Colouring</button>
     </div>
+  </div>
+</div>
+
+<div id="reward-picker" class="leave-confirm" hidden>
+  <div class="leave-confirm-card reward-card-wrap">
+    <div class="leave-confirm-emoji">🏆</div>
+    <div class="leave-confirm-text">Pick a reward for finishing!</div>
+    <div class="reward-tabs">
+      <button class="reward-tab active" data-tab="stamp">🏅 Stamps</button>
+      <button class="reward-tab" data-tab="sticker">⭐ Stickers</button>
+      <button class="reward-tab" data-tab="gift">🎁 Gifts</button>
+    </div>
+    <div id="reward-grid" class="reward-grid"></div>
+    <button id="reward-skip-btn" class="leave-btn leave-btn-cancel">Maybe later</button>
   </div>
 </div>
 
