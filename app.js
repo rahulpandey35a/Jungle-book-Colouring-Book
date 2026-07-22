@@ -91,21 +91,17 @@ const PAGE_CATEGORY = {
 const MODES = [
   { id:"funpaint",  icon:"⚡", name:"Fun Paint",    desc:"Tap to fill — the full colour palette",
     thumb:"page-020.png", tools:["fill"], palette:PALETTE, variant:null },
-  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"7 pencils — crayon, marker, pastel, chalk, glitter, rainbow & bugs",
-    thumb:"page-028.png", tools:["brush","fill","eraser","crayon","marker","pastel","chalk","glitter","rainbow","motif","sticker"],
+  { id:"colorfill", icon:"🎨", name:"Color Fill",   desc:"6 pencils — crayon, marker, pastel, chalk, glitter & rainbow",
+    thumb:"page-028.png", tools:["brush","eraser","crayon","marker","pastel","chalk","glitter","rainbow","sticker"],
     palette:PALETTE, variant:null, containedBrush:true },
   { id:"drawing",   icon:"✏️", name:"Drawing",      desc:"Free draw on a blank page — the full pencil box",
     thumb:null, tools:["brush","eraser","fill","crayon","marker","pastel","chalk","glitter","rainbow","motif"], palette:PALETTE, variant:"blank" },
   { id:"glow",      icon:"✨", name:"Glow Pen",     desc:"Neon colours, crayon & glitter on a dark background", cardClass:"glow",
     thumb:"page-032.png", tools:["fill","brush","eraser","crayon","marker","glitter","rainbow"], palette:NEON_PALETTE, variant:"glow" },
   { id:"numberpaint",icon:"🔢", name:"Number Paint", desc:"Tap a number to match & fill",
-    thumb:"page-014.png", tools:["fill","brush"], palette:PALETTE, variant:"numbered" },
+    thumb:"page-014.png", tools:["fill"], palette:PALETTE, variant:"numbered" },
   { id:"watercolor",icon:"💧", name:"Water Color",  desc:"Wipe away the mist to reveal the colours underneath",
     thumb:"page-036-colored.jpg", tools:["brush","eraser"], palette:[], variant:"watercolor" },
-  { id:"doodle",    icon:"🖊️", name:"Doodle",       desc:"Free-form scribble — crayon, marker, glitter, rainbow & bugs",
-    thumb:"page-021.png", tools:["brush","crayon","marker","glitter","rainbow","motif"], palette:PALETTE, variant:"doodle" },
-  { id:"pixelart",  icon:"🧩", name:"Pixel Art",    desc:"Chunky, blocky pixel-style colouring",
-    thumb:"page-011.png", tools:["fill","brush"], palette:PALETTE, variant:"pixel" },
   { id:"colorrain", icon:"🌧️", name:"Color Rain",   desc:"Pop a falling colour bubble to fill where it lands",
     thumb:"page-034.png", tools:["fill"], palette:PALETTE, variant:"rain" },
   { id:"patterns",  icon:"🌸", name:"Patterns",     desc:"Fill with dots, stripes, stars & more, or draw rainbow & bug trails", cardClass:"funpaint",
@@ -428,16 +424,14 @@ function setupSidebarForMode() {
     const btn = document.getElementById(`${t}-tool`);
     btn.hidden = !currentMode.tools.includes(t);
   });
-  setTool(currentMode.tools[0]);
 
   document.getElementById("color-view").className =
     "view active" + (currentMode.variant === "glow" ? " color-view-glow" : "");
   document.getElementById("color-mode-label").textContent = `${currentMode.icon} ${currentMode.name}`;
 
   buildPalette();
-  document.getElementById("palette").hidden = (currentMode.variant === "watercolor" || currentMode.variant === "rain");
-  document.getElementById("sticker-row").hidden = !currentMode.tools.includes("sticker");
   if (currentMode.tools.includes("sticker")) buildStickerRow();
+  setTool(currentMode.tools[0]);
 }
 
 function setTool(t) {
@@ -447,6 +441,13 @@ function setTool(t) {
   const btn = document.getElementById(`${t}-tool`);
   if (btn) btn.classList.add("active");
   document.getElementById("brush-size-wrap").hidden = (t === "fill" || t === "sticker");
+
+  // Sticker picker only shows while the Sticker tool itself is active;
+  // the colour palette shows the rest of the time (except in modes that
+  // don't use manual colour choice at all).
+  const noPalette = currentMode.variant === "watercolor" || currentMode.variant === "rain";
+  document.getElementById("sticker-row").hidden = (t !== "sticker");
+  document.getElementById("palette").hidden = noPalette || (t === "sticker");
 }
 
 function buildPalette() {
@@ -507,6 +508,31 @@ function selectColorSwatch(index) {
   swatches.forEach(s => s.classList.remove("selected"));
   if (swatches[index]) swatches[index].classList.add("selected");
   selectedColor = PALETTE[index];
+}
+
+// Number Paint: once we know how many distinct numbered regions a page
+// actually has, show only that many swatches instead of the full palette.
+function rebuildNumberedPalette(count) {
+  const palette = document.getElementById("palette");
+  palette.innerHTML = "";
+  for (let i = 0; i < count; i++) {
+    const hex = PALETTE[i];
+    const sw = document.createElement("button");
+    sw.className = "swatch" + (i === 0 ? " selected" : "");
+    sw.style.background = hex;
+    sw.setAttribute("aria-label", `Colour ${hex}`);
+    const badge = document.createElement("span");
+    badge.className = "swatch-num";
+    badge.textContent = i + 1;
+    sw.appendChild(badge);
+    sw.addEventListener("click", () => {
+      document.querySelectorAll("#palette .swatch").forEach(s => s.classList.remove("selected"));
+      sw.classList.add("selected");
+      selectedColor = hex;
+    });
+    palette.appendChild(sw);
+  }
+  selectedColor = PALETTE[0];
 }
 
 function buildStickerRow() {
@@ -951,6 +977,7 @@ function buildNumberRegions(src) {
     });
 
     numberBuilding = false;
+    rebuildNumberedPalette(numbered.length);
     showToast("Ready! Tap a number \u2728");
   };
   probe.src = src;
@@ -1090,10 +1117,15 @@ function animateRainReveal(finalImgData, visited, w, h) {
 function startRainBubbles() {
   stopRainBubbles();
   rainBubbles = [];
-  for (let i = 0; i < 4; i++) spawnRainBubble(true);
+  for (let i = 0; i < 8; i++) spawnRainBubble(true);
   rainSpawnTimer = setInterval(() => {
-    if (rainBubbles.length < 7) spawnRainBubble(false);
-  }, 900);
+    if (rainBubbles.length < 14) {
+      // Spawn a small cluster together so multiple bubbles of different
+      // colours drop from different points at the same time.
+      const burst = 1 + Math.floor(Math.random()*2);
+      for (let i = 0; i < burst && rainBubbles.length < 14; i++) spawnRainBubble(false);
+    }
+  }, 700);
   const frame = () => {
     updateRainBubbles();
     drawRainBubbles();
@@ -1113,13 +1145,13 @@ function stopRainBubbles() {
 
 function spawnRainBubble(randomStart) {
   if (!canvas) return;
-  const radius = canvas.width * (0.045 + Math.random()*0.02);
+  const radius = canvas.width * (0.04 + Math.random()*0.018);
   rainBubbles.push({
     x: radius + Math.random() * (canvas.width - radius*2),
     y: randomStart ? Math.random() * canvas.height : -radius,
     radius,
     color: PALETTE[Math.floor(Math.random()*PALETTE.length)],
-    speed: canvas.height * (0.0009 + Math.random()*0.0007)
+    speed: canvas.height * (0.00035 + Math.random()*0.00035) // slower fall
   });
 }
 
